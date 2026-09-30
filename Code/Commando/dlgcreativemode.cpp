@@ -23,7 +23,6 @@
 #include "dlgevabuildingstab.h"
 #include "cnetwork.h"
 #include "gamemode.h"
-#include "wolgmode.h"
 #include "dialogmgr.h"
 #include "gameinitmgr.h"
 #include "gametype.h"
@@ -35,13 +34,6 @@
 #include "combat.h"
 #include "ccamera.h"
 #include "win.h"
-#include "cstextobj.h"
-#include "wwaudio.h"
-#include "dlghelpscreen.h"
-#include "crandom.h"
-#include "slavemaster.h"
-#include "string_ids.h"
-#include "translatedb.h"
 
 
 ////////////////////////////////////////////////////////////////
@@ -155,17 +147,6 @@ CreativeModeMenuClass::On_Init_Dialog (void)
 		tab_ctrl->Set_Curr_Tab (tab_index);
 	}
 
-	//
-	//	Remove the save/load options for multiplay
-	//
-
-	if (!IS_MISSION) {
-		Get_Dlg_Item (IDC_MENU_LOAD_SP_GAME_BUTTON)->Show (false);
-		Get_Dlg_Item (IDC_MENU_LOAD_SP_GAME_BUTTON)->Enable (false);
-		Get_Dlg_Item (IDC_MENU_SAVE_SP_GAME_BUTTON)->Show (false);
-		Get_Dlg_Item (IDC_MENU_SAVE_SP_GAME_BUTTON)->Enable (false);
-	}
-
 	Get_Dlg_Item (IDC_CREATIVE_RESPAWN)->Enable (cGod::Can_Creative_Respawn ());
 
 	MenuDialogClass::On_Init_Dialog ();
@@ -206,8 +187,6 @@ CreativeModeMenuClass::On_Destroy (void)
 void
 CreativeModeMenuClass::On_Command (int ctrl_id, int message_id, DWORD param)
 {
-	bool allow_default_processing = true;
-
 	switch (ctrl_id)
 	{
 		case IDC_CREATIVE_RESPAWN:
@@ -216,14 +195,13 @@ CreativeModeMenuClass::On_Command (int ctrl_id, int message_id, DWORD param)
 			}
 			return;
 
-		case IDC_HELP_BUTTON:
-			START_DIALOG (HelpScreenDialogClass);
-			break;
-
-		case IDC_MENU_MAIN_MENU_BUTTON:
-			Prompt_User ();
-			allow_default_processing = false;
-			break;
+		case IDC_CREATIVE_REFILL:
+		case IDC_CREATIVE_FREEZE:
+		case IDC_CREATIVE_LOCK_DEFS:
+		case IDC_CREATIVE_GM_FOR_ALLY:
+		case IDC_CREATIVE_SPAWN:
+			// Placeholders: consume clicks without invoking global menu commands.
+			return;
 
 		case IDCANCEL:
 			ctrl_id = IDC_MENU_BACK_BUTTON;
@@ -235,9 +213,7 @@ CreativeModeMenuClass::On_Command (int ctrl_id, int message_id, DWORD param)
 	//
 	//	Allow the base class to process the message (if necessary)
 	//
-	if (allow_default_processing) {
-		MenuDialogClass::On_Command (ctrl_id, message_id, param);
-	}
+	MenuDialogClass::On_Command (ctrl_id, message_id, param);
 
 	return ;
 }
@@ -265,71 +241,5 @@ CreativeModeMenuClass::Display (TAB_ID tab_id)
 		}
 	}
 
-	return ;
-}
-
-
-////////////////////////////////////////////////////////////////
-//
-//	Prompt_User
-//
-////////////////////////////////////////////////////////////////
-void
-CreativeModeMenuClass::Prompt_User (void)
-{
-	//
-	//	Display the message box
-	//
-	DlgMsgBox::DoDialog (TRANSLATE (IDS_MENU_TEXT054), TRANSLATE (IDS_EXIT_GAME_VERIFICATION), DlgMsgBox::YesNo, this);	
-	return ;
-}
-
-
-////////////////////////////////////////////////////////////////
-//
-//	HandleNotification
-//
-////////////////////////////////////////////////////////////////
-void
-CreativeModeMenuClass::HandleNotification (DlgMsgBoxEvent &event)
-{
-	if (event.Event () == DlgMsgBoxEvent::Yes) {
-		Exit_Game ();
-	}
-
-	return ;
-}
-
-
-////////////////////////////////////////////////////////////////
-//
-//	Exit_Game
-//
-////////////////////////////////////////////////////////////////
-void
-CreativeModeMenuClass::Exit_Game (void)
-{
-	bool stop = false;
-	if (GameModeManager::Find("WOL")->Is_Active() || GameModeManager::Find("LAN")->Is_Active()) {
-		if (cNetwork::I_Am_Server() && The_Game() && The_Game()->IsDedicated.Is_True() && SlaveMaster.Am_I_Slave()) {
-			stop = true;
-		}
-	}
-
-	//
-	//	Close the dialog
-	//
-	End_Dialog ();
-
-	GameInitMgrClass::End_Game();
-
-	//
-	// Dedicated slave servers should just quit here.
-	//
-	if (stop) {
-		extern void Stop_Main_Loop (int exitCode);
-		Stop_Main_Loop (EXIT_SUCCESS);
-	}
-	GameInitMgrClass::Display_End_Game_Menu();
 	return ;
 }

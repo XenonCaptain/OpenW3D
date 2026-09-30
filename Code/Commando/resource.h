@@ -852,6 +852,11 @@
 
 #define IDD_MENU_CREATIVE_MODE          259
 #define IDC_CREATIVE_RESPAWN            1660
+#define IDC_CREATIVE_REFILL             1661
+#define IDC_CREATIVE_FREEZE             1662
+#define IDC_CREATIVE_LOCK_DEFS          1663
+#define IDC_CREATIVE_GM_FOR_ALLY        1664
+#define IDC_CREATIVE_SPAWN              1665
 
 // Next default values for new objects
 // 
@@ -859,7 +864,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        260
 #define _APS_NEXT_COMMAND_VALUE         40002
-#define _APS_NEXT_CONTROL_VALUE         1661
+#define _APS_NEXT_CONTROL_VALUE         1666
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

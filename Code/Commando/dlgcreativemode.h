@@ -21,7 +21,6 @@
 
 #include "menudialog.h"
 #include "resource.h"
-#include "dlgmessagebox.h"
 
 
 ////////////////////////////////////////////////////////////////
@@ -29,7 +28,7 @@
 //	CreativeModeMenuClass
 //
 ////////////////////////////////////////////////////////////////
-class CreativeModeMenuClass : public MenuDialogClass, public Observer<DlgMsgBoxEvent>
+class CreativeModeMenuClass : public MenuDialogClass
 {
 public:
 	
@@ -69,13 +68,6 @@ public:
 	static CreativeModeMenuClass *	Get_Instance (void)	{ return _TheInstance; }
 
 private:
-
-	////////////////////////////////////////////////////////////////
-	//	Private methods
-	////////////////////////////////////////////////////////////////	
-	void		Prompt_User (void);
-	void		HandleNotification (DlgMsgBoxEvent &event);
-	void		Exit_Game (void);
 
 	////////////////////////////////////////////////////////////////
 	//	Private member data

@@ -780,19 +780,19 @@ BEGIN
     CONTROL         "IDS_MENU_TEXT184",IDC_MENU_BACK_BUTTON,"Button",
                     BS_OWNERDRAW | BS_CENTER | BS_FLAT | WS_TABSTOP,8,274,61,
                     19
-    CONTROL         "IDS_MENU_TEXT181",IDC_MENU_LOAD_SP_GAME_BUTTON,"Button",
+    CONTROL         "Freeze",IDC_CREATIVE_FREEZE,"Button",
                     BS_OWNERDRAW | BS_CENTER | WS_TABSTOP,149,274,54,19
-    CONTROL         "IDS_MENU_TEXT182",IDC_MENU_OPTIONS_BUTTON,"Button",
+    CONTROL         "Lock Defs",IDC_CREATIVE_LOCK_DEFS,"Button",
                     BS_OWNERDRAW | BS_CENTER | WS_TABSTOP,212,274,54,19
-    CONTROL         "IDS_MENU_TEXT183",IDC_MENU_SAVE_SP_GAME_BUTTON,"Button",
+    CONTROL         "GM for Ally",IDC_CREATIVE_GM_FOR_ALLY,"Button",
                     BS_OWNERDRAW | BS_CENTER | WS_TABSTOP,275,274,54,19
-    CONTROL         "IDS_MENU_TEXT180",IDC_MENU_MAIN_MENU_BUTTON,"Button",
+    CONTROL         "Spawn",IDC_CREATIVE_SPAWN,"Button",
                     BS_OWNERDRAW | BS_CENTER | WS_GROUP | WS_TABSTOP,338,274,
                     54,19
     CONTROL         "",IDC_GENERIC_TABCTRL,"SysTabControl32",WS_GROUP,8,59,
                     384,202
     LTEXT           "%tCreative Mode",IDC_STATIC,116,13,168,24
-    CONTROL         "IDS_MENU_TEXT566",IDC_HELP_BUTTON,"Button",BS_OWNERDRAW | 
+    CONTROL         "Refill",IDC_CREATIVE_REFILL,"Button",BS_OWNERDRAW |
                     BS_CENTER | WS_TABSTOP,86,274,54,19
     CONTROL         "Respawn",IDC_CREATIVE_RESPAWN,"Button",
                     BS_OWNERDRAW | BS_CENTER | WS_TABSTOP,8,36,54,19
@@ -2847,7 +2847,7 @@ FONT 8, "MS Sans Serif"
 BEGIN
     CONTROL         "",IDC_IMAGE_CTRL,"Static",SS_BITMAP | SS_CENTERIMAGE,0,
                     0,399,300
-    LTEXT           "%s©2002 Electronic Arts Inc. All rights reserved.  EA GAMES™ and Westwood Studios™ are Electronic Arts™ brands.",
+    LTEXT           "%sï¿½2002 Electronic Arts Inc. All rights reserved.  EA GAMESï¿½ and Westwood Studiosï¿½ are Electronic Artsï¿½ brands.",
                     IDC_STATIC,0,279,400,21
 END
 
