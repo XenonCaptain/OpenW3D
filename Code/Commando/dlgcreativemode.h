@@ -1,0 +1,88 @@
+/***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : OpenW3D                                                      *
+ *                                                                                             *
+ *                     File Name : /Code/Commando/dlgcreativemode.h                    		  $*
+ *                                                                                             *
+ *---------------------------------------------------------------------------------------------*
+ *                                                                                             *
+ *                                                                                             *
+ *                                                                                             *
+ *                                                                                             *
+ * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+
+#if defined(_MSC_VER)
+#pragma once
+#endif
+
+#ifndef __DLGCREATIVEMODE_H
+#define __DLGCREATIVEMODE_H
+
+#include "menudialog.h"
+#include "resource.h"
+#include "dlgmessagebox.h"
+
+
+////////////////////////////////////////////////////////////////
+//
+//	CreativeModeMenuClass
+//
+////////////////////////////////////////////////////////////////
+class CreativeModeMenuClass : public MenuDialogClass, public Observer<DlgMsgBoxEvent>
+{
+public:
+	
+	////////////////////////////////////////////////////////////////
+	//	Public constants
+	////////////////////////////////////////////////////////////////	
+	typedef enum
+	{
+		TAB_NONE				= -1,
+		TAB_OBJECTIVES		= 0,
+		TAB_MAP,
+		TAB_DATA,
+		TAB_CHARACTERS,
+		TAB_WEAPONS,
+		TAB_VEHICLES,
+		TAB_BUILDINGS
+	} TAB_ID;
+	
+	////////////////////////////////////////////////////////////////
+	//	Public constructors/destructors
+	////////////////////////////////////////////////////////////////	
+	CreativeModeMenuClass (void);
+	~CreativeModeMenuClass (void);
+
+	////////////////////////////////////////////////////////////////
+	//	Public methods
+	////////////////////////////////////////////////////////////////
+	static void Update_Toggle (void);
+	void		On_Init_Dialog (void);
+	void		On_Destroy (void);
+	void		On_Command (int ctrl_id, int mesage_id, DWORD param);
+
+	//
+	//	Singleton access
+	//
+	static void									Display (TAB_ID tab_id = TAB_NONE);
+	static CreativeModeMenuClass *	Get_Instance (void)	{ return _TheInstance; }
+
+private:
+
+	////////////////////////////////////////////////////////////////
+	//	Private methods
+	////////////////////////////////////////////////////////////////	
+	void		Prompt_User (void);
+	void		HandleNotification (DlgMsgBoxEvent &event);
+	void		Exit_Game (void);
+
+	////////////////////////////////////////////////////////////////
+	//	Private member data
+	////////////////////////////////////////////////////////////////	
+	static CreativeModeMenuClass *	_TheInstance;
+	static int									_NextTabIndex;
+};
+
+
+#endif //__DLGCREATIVEMODE_H

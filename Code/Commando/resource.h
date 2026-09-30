@@ -850,13 +850,16 @@
 #define IDC_EXIT_BUTTON                 11038
 #define IDM_TOGGLE_FULLSCREEN           40001
 
+#define IDD_MENU_CREATIVE_MODE          259
+#define IDC_CREATIVE_RESPAWN            1660
+
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        259
+#define _APS_NEXT_RESOURCE_VALUE        260
 #define _APS_NEXT_COMMAND_VALUE         40002
-#define _APS_NEXT_CONTROL_VALUE         1660
+#define _APS_NEXT_CONTROL_VALUE         1661
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

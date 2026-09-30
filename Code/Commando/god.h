@@ -57,6 +57,8 @@ class cGod
 		static void					Reset( void );
 		static void					Star_Killed( void );
 		static void					Respawn( void );
+		static bool 				Can_Creative_Respawn( void );
+		static bool 				Creative_Respawn( void );
 		static void					Restart( void );
 		static void					Load_Game( void );
 		static void					Mission_Failed( void );

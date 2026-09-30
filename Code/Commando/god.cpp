@@ -46,6 +46,7 @@
 #include "wolgmode.h"
 #include "specialbuilds.h"
 #include "demosupport.h"
+#include "vehicle.h"
 
 /*
 **
@@ -513,6 +514,51 @@ void cGod::Respawn( void )
 	}
 
 	State = GOD_STATE_SINGLE_RUNNING;
+}
+
+bool cGod::Can_Creative_Respawn( void )
+{
+	// Only the local authority may replace a character. Remote clients cannot
+	// use this operation on a server that has not explicitly implemented it.
+	return cNetwork::I_Am_Server() && cNetwork::I_Am_Client() &&
+		The_Game() != NULL && The_Game()->IsIntermission.Is_False() &&
+		(State == GOD_STATE_SINGLE_RUNNING || State == GOD_STATE_MULTIPLAYER) &&
+		COMBAT_STAR != NULL && !COMBAT_STAR->Is_Delete_Pending() &&
+		COMBAT_STAR->Get_Defense_Object()->Get_Health() > 0 &&
+		cPlayerManager::Find_Player(cNetwork::Get_My_Id()) != NULL;
+}
+
+bool cGod::Creative_Respawn( void )
+{
+	if (!Can_Creative_Respawn()) {
+		return false;
+	}
+
+	cPlayer *player = cPlayerManager::Find_Player(cNetwork::Get_My_Id());
+	SoldierGameObj *old_soldier = COMBAT_STAR;
+	const float credits = player->Get_Money();
+	InventoryClass inventory;
+	if (IS_MISSION) {
+		inventory.Store_Inventory(old_soldier);
+	}
+	if (old_soldier->Get_Vehicle() != NULL) {
+		old_soldier->Get_Vehicle()->Remove_Occupant(old_soldier);
+	}
+
+	// Detach before assigning the replacement so the old object's destruction
+	// cannot clear the player's link to the new character.
+	old_soldier->Set_Player_Data(NULL);
+	old_soldier->Set_Delete_Pending();
+	SoldierGameObj *soldier = Create_Commando(player);
+	if (IS_MISSION) {
+		inventory.Restore_Inventory(soldier);
+		ScriptClass *script = ScriptManager::Create_Script(CombatManager::Get_Respawn_Script());
+		if (script != NULL) {
+			soldier->Add_Observer(script);
+		}
+	}
+	player->Set_Money(credits);
+	return true;
 }
 
 void cGod::Restart( void )

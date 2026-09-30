@@ -218,6 +218,8 @@ set(COMMANDO_SRC
     dlgevacharacterstab.h
     dlgevadatatab.cpp
     dlgevadatatab.h
+    dlgcreativemode.cpp
+    dlgcreativemode.h
     dlgevaencyclopedia.cpp
     dlgevaencyclopedia.h
     dlgevamaptab.cpp

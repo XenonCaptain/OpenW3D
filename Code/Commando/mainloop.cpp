@@ -64,6 +64,7 @@
 #include "consolemode.h"
 #include "gamespyadmin.h"
 #include "demosupport.h"
+#include "dlgcreativemode.h"
 #include "GameSpy_QnR.h"
 
 
@@ -89,6 +90,7 @@ void _Game_Main_Loop_Loop(void)
    TimeManager::Update();
 
    Input::Update();
+   CreativeModeMenuClass::Update_Toggle ();
 
 
 {	WWPROFILE( "Pathfind Evaluate" );
