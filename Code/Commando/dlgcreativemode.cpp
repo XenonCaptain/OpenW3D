@@ -15,8 +15,6 @@
 #include "dialogresource.h"
 #include "tabctrl.h"
 #include "dlgevaobjectivestab.h"
-#include "dlgevamaptab.h"
-#include "dlgevadatatab.h"
 #include "dlgevacharacterstab.h"
 #include "dlgevaweaponstab.h"
 #include "dlgevavehiclestab.h"
@@ -129,8 +127,6 @@ CreativeModeMenuClass::On_Init_Dialog (void)
 		//	Add the tabs to the control
 		//
 		TABCTRL_ADD_TAB (tab_ctrl, EvaObjectivesTabClass);
-		TABCTRL_ADD_TAB (tab_ctrl, EvaMapTabClass);
-		TABCTRL_ADD_TAB (tab_ctrl, EvaDataTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaCharactersTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaWeaponsTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaVehiclesTabClass);

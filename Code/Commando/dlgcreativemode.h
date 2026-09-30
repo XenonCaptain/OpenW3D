@@ -39,8 +39,6 @@ public:
 	{
 		TAB_NONE				= -1,
 		TAB_OBJECTIVES		= 0,
-		TAB_MAP,
-		TAB_DATA,
 		TAB_CHARACTERS,
 		TAB_WEAPONS,
 		TAB_VEHICLES,
