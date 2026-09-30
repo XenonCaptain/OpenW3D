@@ -858,13 +858,17 @@
 #define IDC_CREATIVE_GM_FOR_ALLY        1664
 #define IDC_CREATIVE_SPAWN              1665
 
+#define IDD_CREATIVE_OBJECTIVES_TAB     260
+#define IDC_CREATIVE_OBJECTIVE_COMPLETE 1666
+#define IDC_CREATIVE_OBJECTIVE_FAIL     1667
+
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        260
+#define _APS_NEXT_RESOURCE_VALUE        261
 #define _APS_NEXT_COMMAND_VALUE         40002
-#define _APS_NEXT_CONTROL_VALUE         1666
+#define _APS_NEXT_CONTROL_VALUE         1668
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
