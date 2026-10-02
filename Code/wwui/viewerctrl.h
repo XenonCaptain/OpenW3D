@@ -66,6 +66,7 @@ class ViewerCtrlClass : public DialogControlClass
 public:
 
 	enum InterfaceModeEnum {
+		FIXED_FACING,            // Fixed camera; facing is controlled by the owning dialog.
 		Z_ROTATION,				// Automatic rotation of camera around Z-axis.
 		VIRTUAL_TRACKBALL		// Camera rotation with virtual trackball under user control.
 	};

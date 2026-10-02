@@ -37,8 +37,264 @@
 #include "combat.h"
 #include "ccamera.h"
 #include "win.h"
+#include "soldier.h"
+#include "definitionmgr.h"
+#include "objlibrary.h"
+#include "phys.h"
+#include "pscene.h"
+#include "physcoltest.h"
+#include "assets.h"
+#include "rendobj.h"
+#include "viewerctrl.h"
+#include "dialogtext.h"
+#include "checkboxctrl.h"
 
 
+
+namespace {
+RenderObjClass *InfantryPreview = NULL;
+PhysicsSceneClass *PreviewScene = NULL;
+StringClass InfantryPreset;
+float InfantryDistance = 5.0F;
+float InfantryHeight = 0.0F;
+float InfantryInitialFacing = 0.0F;
+int InfantryRotationSteps = 0;
+bool PlacementArmed = false;
+bool InfantrySpawnRequested = false;
+bool SuppressPlacementInput = false;
+Matrix3D InfantryTransform(1);
+
+SoldierGameObjDef *Find_Soldier_Definition(int id)
+{
+	DefinitionClass *definition = DefinitionMgrClass::Find_Definition(id, false);
+	return definition != nullptr && definition->Get_Class_ID() == CLASSID_GAME_OBJECT_DEF_SOLDIER
+		? static_cast<SoldierGameObjDef *>(definition) : nullptr;
+}
+
+void Cancel_Infantry_Placement()
+{
+    if (InfantryPreview != NULL) {
+        PreviewScene->Remove_Render_Object(InfantryPreview);
+        PreviewScene->Release_Ref();
+        InfantryPreview->Release_Ref();
+    }
+    InfantryPreview = NULL;
+    PreviewScene = NULL;
+    InfantryPreset = "";
+    InfantryHeight = 0.0F;
+    PlacementArmed = false;
+    InfantrySpawnRequested = false;
+}
+
+bool Is_Soldier_Definition(DefinitionClass *definition)
+{
+    if (definition == NULL) return false;
+    const uint32 class_id = definition->Get_Class_ID();
+    return class_id == CLASSID_GAME_OBJECT_DEF_SOLDIER ||
+        class_id == CLASSID_GAME_OBJECT_DEF_MENDOZA_BOSS ||
+        class_id == CLASSID_GAME_OBJECT_DEF_RAVESHAW_BOSS;
+}
+
+bool Can_Select_Character()
+{
+    return cNetwork::I_Am_Server() && COMBAT_STAR != NULL &&
+        COMBAT_STAR->Get_Vehicle() == NULL && The_Game() != NULL &&
+        The_Game()->IsIntermission.Is_False();
+}
+}
+
+// A separate resource preserves the normal encyclopedia and the existing viewer bounds.
+class CreativeCharactersTabClass : public EvaViewerTabClass
+{
+public:
+    CreativeCharactersTabClass() : EvaViewerTabClass(IDD_CREATIVE_CHARACTERS_TAB) {}
+    void On_Init_Dialog()
+    {
+        Set_Encyclopedia_Type(EncyclopediaMgrClass::TYPE_CHARACTER);
+        Set_List_Ctrl((ListCtrlClass *)Get_Dlg_Item(IDC_LIST_CTRL));
+        Set_Description_Ctrl(NULL);
+        Set_Affiliation_Ctrl((DialogTextClass *)Get_Dlg_Item(IDC_AFFILIATION_STATIC));
+        Set_Viewer_Ctrl((ViewerCtrlClass *)Get_Dlg_Item(IDC_VIEWER_CTRL));
+        EvaViewerTabClass::On_Init_Dialog();
+        ListCtrl->Sort(AlphabeticalSortCallback, 0);
+        if (ListCtrl->Get_Entry_Count() > 0) {
+            ListCtrl->Set_Curr_Sel(0);
+            View_Entry(0);
+        }
+    }
+    StringClass Preset_Model(SoldierGameObjDef *soldier)
+    {
+        DefinitionClass *physics = DefinitionMgrClass::Find_Definition(soldier->Get_Phys_Def_ID());
+        StringClass model_name;
+        if (physics != NULL) {
+            // Physics presets store a .w3d filename, while the viewer and
+            // placement loader expect the render object's name without its path
+            // or extension.
+            Strip_Path_From_Filename(model_name, ((PhysDefClass *)physics)->Get_Model_Name());
+            const int length = model_name.Get_Length();
+            if (length >= 4 && stricmp(model_name.Peek_Buffer() + length - 4, ".w3d") == 0) {
+                model_name.Erase(length - 4, 4);
+            }
+        }
+        return model_name;
+    }
+    static int CALLBACK AlphabeticalSortCallback(ListCtrlClass *list, int first, int second, uint32)
+    {
+        EvaViewerObjectClass *a = (EvaViewerObjectClass *)list->Get_Entry_Data(first, 0);
+        EvaViewerObjectClass *b = (EvaViewerObjectClass *)list->Get_Entry_Data(second, 0);
+        const int result = wcsicmp(a->Get_Name(), b->Get_Name());
+        // Retain distinct presets sharing the same translated display name.
+        return result != 0 ? result : stricmp(a->Get_Definition_Name(), b->Get_Definition_Name());
+    }
+    void Build_Object_List()
+    {
+        ObjectList.Delete_All();
+        // Every loaded soldier definition gets its own row, including mission
+        // variants and soldier-derived bosses, regardless of encyclopedia reveal.
+		for (DefinitionClass *definition = DefinitionMgrClass::Get_First(CLASSID_GAME_OBJECT_DEF_SOLDIER);
+             definition != NULL; definition = DefinitionMgrClass::Get_Next(definition)) {
+            if (!Is_Soldier_Definition(definition) || stricmp(definition->Get_Name(), "Soldier_Presets") == 0) continue;
+            SoldierGameObjDef *soldier = (SoldierGameObjDef *)definition;
+            WideStringClass name;
+            const uint32 name_id = soldier->Get_Translated_Name_ID();
+            if (name_id != 0 && TranslateDBClass::Find_Object(name_id) != NULL) {
+                const WCHAR *translated = TRANSLATE(name_id);
+                if (translated != NULL) name = translated;
+            }
+            if (name.Get_Length() == 0) name.Convert_From(definition->Get_Name());
+            EvaViewerObjectClass entry;
+            entry.Set_ID(definition->Get_ID());
+            entry.Set_Definition_Name(definition->Get_Name());
+            entry.Set_Player_Type(soldier->Get_Default_Player_Type());
+            entry.Set_Model_Name(Preset_Model(soldier));
+            entry.Set_Name(name);
+            entry.Set_Affiliation(name);
+            ObjectList.Add(entry);
+        }
+    }
+    bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
+    void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
+    {
+        Prepare_Model(model);
+        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0f);
+        Update_Display_Facing();
+    }
+    void Update_Display_Facing()
+    {
+        if (ViewerCtrl->Peek_Model() != NULL) {
+            Matrix3D facing(1);
+            facing.Rotate_Z(DEG_TO_RADF(45.0F));
+            ViewerCtrl->Peek_Model()->Set_Transform(facing);
+        }
+    }
+    void On_Frame_Update()
+    {
+        Update_Display_Facing();
+        Get_Dlg_Item(IDC_CREATIVE_CHARACTER_SELECT)->Enable(Can_Select_Character() && ListCtrl->Get_Curr_Sel() >= 0);
+        EvaViewerTabClass::On_Frame_Update();
+    }
+    void On_Command(int ctrl_id, int message_id, DWORD param)
+    {
+        if (ctrl_id != IDC_CREATIVE_CHARACTER_SELECT) {
+            EvaViewerTabClass::On_Command(ctrl_id, message_id, param);
+            return;
+        }
+        if (!Can_Select_Character() || ListCtrl->Get_Curr_Sel() < 0) return;
+        EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
+        SoldierGameObjDef *soldier = Find_Soldier_Definition(entry->Get_ID());
+        if (!soldier) return;
+        Cancel_Infantry_Placement();
+        if (((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_SPAWN_INFANTRY))->Get_Check()) {
+            InfantryPreview = WW3DAssetManager::Get_Instance()->Create_Render_Obj(entry->Get_Model_Name());
+            if (InfantryPreview == NULL) return;
+            InfantryPreset = soldier->Get_Name();
+            InfantryDistance = 5.0F;
+            InfantryHeight = 0.0F;
+            InfantryInitialFacing = COMBAT_STAR->Get_Transform().Get_Z_Rotation();
+            InfantryRotationSteps = 0;
+            PreviewScene = COMBAT_SCENE;
+            PreviewScene->Add_Ref();
+            PreviewScene->Add_Render_Object(InfantryPreview);
+        } else {
+            const Matrix3D transform = COMBAT_STAR->Get_Transform();
+            const int team = COMBAT_STAR->Get_Player_Type();
+            COMBAT_STAR->Re_Init(*soldier);
+            COMBAT_STAR->Set_Player_Type(team);
+            COMBAT_STAR->Set_Transform(transform);
+        }
+        SuppressPlacementInput = true;
+        CreativeModeMenuClass::Get_Instance()->On_Command(IDC_MENU_BACK_BUTTON, 0, 0);
+    }
+};
+
+void CreativeModeMenuClass::Update_Placement_Input()
+{
+    const bool left = (DirectInput::Get_Mouse_Button(DirectInput::BUTTON_MOUSE_LEFT) & DirectInput::DI_BUTTON_HELD) != 0;
+    const bool right = (DirectInput::Get_Mouse_Button(DirectInput::BUTTON_MOUSE_RIGHT) & DirectInput::DI_BUTTON_HELD) != 0;
+    if (InfantryPreview != NULL || SuppressPlacementInput) {
+        Input::Suppress_Creative_Placement_Actions();
+        if (COMBAT_STAR != NULL) {
+            COMBAT_STAR->Get_Control().Set_Boolean(ControlClass::BOOLEAN_WEAPON_FIRE_PRIMARY, false);
+            COMBAT_STAR->Get_Control().Set_Boolean(ControlClass::BOOLEAN_WEAPON_FIRE_SECONDARY, false);
+        }
+    }
+    if (InfantryPreview == NULL) {
+        if (!left && !right) SuppressPlacementInput = false;
+        return;
+    }
+    if (!Can_Select_Character() || COMBAT_SCENE != PreviewScene ||
+        !GameInFocus || Input::Is_Console_Enabled() || DialogMgrClass::Get_Dialog_Count() != 0 ||
+        COMBAT_CAMERA == NULL || COMBAT_CAMERA->Is_In_Cinematic()) {
+        Cancel_Infantry_Placement();
+        return;
+    }
+    if (!left && !right) PlacementArmed = true;
+    if (!PlacementArmed) return;
+    if (right) { Cancel_Infantry_Placement(); return; }
+    if (DirectInput::Get_Keyboard_Button(DIK_R) & DirectInput::DI_BUTTON_HIT) {
+        InfantryRotationSteps = (InfantryRotationSteps + 1) % 8;
+    }
+    if (DirectInput::Get_Keyboard_Button(DIK_ADD) & DirectInput::DI_BUTTON_HIT) {
+        InfantryHeight += 0.5F;
+    }
+    if (DirectInput::Get_Keyboard_Button(DIK_SUBTRACT) & DirectInput::DI_BUTTON_HIT) {
+        InfantryHeight -= 0.5F;
+    }
+    InfantryDistance = WWMath::Clamp(InfantryDistance - DirectInput::Get_Mouse_Axis(DirectInput::MOUSE_Z_AXIS) / 120.0F, 1.0F, 50.0F);
+    if (left) InfantrySpawnRequested = true;
+}
+
+// Run after combat/camera updates, immediately before rendering. The preview has
+// no physics, AI, or network interpolation to fight the placement transform.
+void CreativeModeMenuClass::Update_Placement_Preview()
+{
+    if (InfantryPreview == NULL || COMBAT_CAMERA == NULL || COMBAT_STAR == NULL) return;
+    Vector3 forward = -COMBAT_CAMERA->Get_Transform().Get_Z_Vector();
+    forward.Z = 0;
+    if (forward.Length2() < 0.0001F) forward = COMBAT_STAR->Get_Transform().Get_X_Vector();
+    forward.Normalize();
+    Vector3 position;
+    COMBAT_STAR->Get_Position(&position);
+    position += forward * InfantryDistance;
+    CastResultStruct result;
+    PhysRayCollisionTestClass ray(LineSegClass(position + Vector3(0, 0, 3), position - Vector3(0, 0, 100)), &result, 0);
+    ray.CheckDynamicObjs = false;
+    COMBAT_SCENE->Cast_Ray(ray);
+    if (result.Fraction < 1.0F) position.Z = position.Z + 3.0F - 103.0F * result.Fraction;
+    position.Z += InfantryHeight;
+    InfantryTransform.Make_Identity();
+    InfantryTransform.Rotate_Z(InfantryInitialFacing + DEG_TO_RADF(45.0F * InfantryRotationSteps));
+    InfantryTransform.Set_Translation(position);
+    InfantryPreview->Set_Transform(InfantryTransform);
+    if (InfantrySpawnRequested) {
+        PhysicalGameObj *object = ObjectLibraryManager::Create_Object(InfantryPreset);
+        if (object != NULL) {
+            object->Set_Transform(InfantryTransform);
+            if (object->As_SoldierGameObj() != NULL) object->As_SoldierGameObj()->Innate_Enable();
+        }
+        Cancel_Infantry_Placement();
+    }
+}
 
 // Creative Mode uses its own tab so the normal EVA objective view is unchanged.
 class CreativeObjectivesTabClass : public ChildDialogClass
@@ -292,7 +548,7 @@ CreativeModeMenuClass::On_Init_Dialog (void)
 		//	Add the tabs to the control
 		//
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeObjectivesTabClass);
-		TABCTRL_ADD_TAB (tab_ctrl, EvaCharactersTabClass);
+		TABCTRL_ADD_TAB (tab_ctrl, CreativeCharactersTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaWeaponsTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaVehiclesTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaBuildingsTabClass);

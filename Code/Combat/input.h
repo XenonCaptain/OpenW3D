@@ -285,6 +285,16 @@ public:
 	static	bool	Is_Console_Enabled( void )	{ return ConsoleMode; }
 	static	void	Flush_Queue()		{ QueueHead = QueueTail = QueueSize = 0; }
 
+	// Placement consumes actions while leaving movement and camera controls available.
+	static void Suppress_Creative_Placement_Actions() {
+		FunctionValue[INPUT_FUNCTION_FIRE_WEAPON_PRIMARY] = 0;
+		FunctionValue[INPUT_FUNCTION_FIRE_WEAPON_SECONDARY] = 0;
+		FunctionValue[INPUT_FUNCTION_RELOAD_WEAPON] = 0;
+		FunctionValue[INPUT_FUNCTION_USE_WEAPON] = 0;
+		FunctionValue[INPUT_FUNCTION_NEXT_WEAPON] = 0;
+		FunctionValue[INPUT_FUNCTION_PREV_WEAPON] = 0;
+	}
+
 	// Get States
 	static	float	Get_Amount( InputFunction function );
 	static	bool	Get_State( InputFunction function )		{ return (MenuMode || ConsoleMode) ? false : Peek_State (function); }

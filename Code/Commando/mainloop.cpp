@@ -91,6 +91,7 @@ void _Game_Main_Loop_Loop(void)
 
    Input::Update();
    CreativeModeMenuClass::Update_Toggle ();
+   CreativeModeMenuClass::Update_Placement_Input ();
 
 
 {	WWPROFILE( "Pathfind Evaluate" );
@@ -135,6 +136,7 @@ void _Game_Main_Loop_Loop(void)
 
 	// Denzil - Embedded browser
 	if (WebBrowser::IsWebPageDisplayed() == false) {
+		CreativeModeMenuClass::Update_Placement_Preview ();
 		GameModeManager::Render();
 	}
 

@@ -100,7 +100,7 @@ EvaViewerTabClass::On_Init_Dialog (void)
 		//
 		//	Check to see if this entry should be displayed
 		//
-		if (EncyclopediaMgrClass::Is_Object_Revealed (EncyclopediaType, object.Get_ID ())) {
+		if (Is_Entry_Visible(object)) {
 
 			//
 			//	Add an entry to the list control for this object

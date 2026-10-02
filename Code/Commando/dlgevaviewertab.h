@@ -170,7 +170,8 @@ protected:
 	void		On_Destroy_Dialog (void);	
 	void		View_Entry (int entry_index);
 
-	void		Build_Object_List (void);
+	virtual void Build_Object_List (void);
+	virtual bool Is_Entry_Visible(const EvaViewerObjectClass &object) { return EncyclopediaMgrClass::Is_Object_Revealed(EncyclopediaType, object.Get_ID()); }
 	void		Prepare_Model (RenderObjClass *model);
 
 	////////////////////////////////////////////////////////////////

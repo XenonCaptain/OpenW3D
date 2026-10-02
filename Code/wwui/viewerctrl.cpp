@@ -285,6 +285,7 @@ ViewerCtrlClass::Render (void)
 void
 ViewerCtrlClass::On_LButton_Down (const Vector2 &mouse_pos)
 {
+	if (InterfaceMode == FIXED_FACING) return;
 	// Put the viewer interface into virtual trackball mode.
 	Set_Interface_Mode (ViewerCtrlClass::VIRTUAL_TRACKBALL);
 	return ;
