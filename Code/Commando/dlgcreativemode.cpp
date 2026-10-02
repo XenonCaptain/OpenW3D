@@ -51,6 +51,8 @@
 #include "weapons.h"
 #include "weaponbag.h"
 #include "creativeammo.h"
+#include "creativeautorepair.h"
+#include "vehicle.h"
 #include "stylemgr.h"
 
 
@@ -64,6 +66,7 @@ float InfantryHeight = 0.0F;
 float InfantryInitialFacing = 0.0F;
 int InfantryRotationSteps = 0;
 bool PlacementArmed = false;
+bool VehiclePlacement = false;
 bool InfantrySpawnRequested = false;
 bool SuppressPlacementInput = false;
 Matrix3D InfantryTransform(1);
@@ -82,6 +85,7 @@ void Cancel_Infantry_Placement()
         PreviewScene->Release_Ref();
         InfantryPreview->Release_Ref();
     }
+    VehiclePlacement = false;
     InfantryPreview = NULL;
     PreviewScene = NULL;
     InfantryPreset = "";
@@ -104,6 +108,15 @@ bool Can_Select_Character()
     return cNetwork::I_Am_Server() && COMBAT_STAR != NULL &&
         COMBAT_STAR->Get_Vehicle() == NULL && The_Game() != NULL &&
         The_Game()->IsIntermission.Is_False();
+}
+}
+
+namespace {
+bool Can_Select_Vehicle()
+{
+    return cNetwork::I_Am_Server() && COMBAT_STAR != NULL &&
+        !COMBAT_STAR->Is_Delete_Pending() && COMBAT_STAR->Get_Defense_Object()->Get_Health() > 0 &&
+        The_Game() != NULL && The_Game()->IsIntermission.Is_False();
 }
 }
 
@@ -231,8 +244,131 @@ public:
     }
 };
 
+class CreativeVehiclesTabClass : public EvaViewerTabClass
+{
+public:
+    CreativeVehiclesTabClass() : EvaViewerTabClass(IDD_CREATIVE_VEHICLES_TAB) {}
+    void On_Init_Dialog()
+    {
+        Set_Encyclopedia_Type(EncyclopediaMgrClass::TYPE_VEHICLE);
+        Set_List_Ctrl((ListCtrlClass *)Get_Dlg_Item(IDC_LIST_CTRL));
+        Set_Description_Ctrl(NULL);
+        Set_Affiliation_Ctrl((DialogTextClass *)Get_Dlg_Item(IDC_AFFILIATION_STATIC));
+        Set_Viewer_Ctrl((ViewerCtrlClass *)Get_Dlg_Item(IDC_VIEWER_CTRL));
+        EvaViewerTabClass::On_Init_Dialog();
+        ((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_AUTO_REPAIR))->Set_Check(Get_Creative_Auto_Repair());
+        ListCtrl->Sort(AlphabeticalSortCallback, 0);
+        if (ListCtrl->Get_Entry_Count() > 0) {
+            ListCtrl->Set_Curr_Sel(0);
+            View_Entry(0);
+        }
+    }
+    StringClass Preset_Model(VehicleGameObjDef *soldier)
+    {
+        DefinitionClass *physics = DefinitionMgrClass::Find_Definition(soldier->Get_Phys_Def_ID());
+        StringClass model_name;
+        if (physics != NULL) {
+            // Physics presets store a .w3d filename, while the viewer and
+            // placement loader expect the render object's name without its path
+            // or extension.
+            Strip_Path_From_Filename(model_name, ((PhysDefClass *)physics)->Get_Model_Name());
+            const int length = model_name.Get_Length();
+            if (length >= 4 && stricmp(model_name.Peek_Buffer() + length - 4, ".w3d") == 0) {
+                model_name.Erase(length - 4, 4);
+            }
+        }
+        return model_name;
+    }
+    static int CALLBACK AlphabeticalSortCallback(ListCtrlClass *list, int first, int second, uint32)
+    {
+        EvaViewerObjectClass *a = (EvaViewerObjectClass *)list->Get_Entry_Data(first, 0);
+        EvaViewerObjectClass *b = (EvaViewerObjectClass *)list->Get_Entry_Data(second, 0);
+        const int result = wcsicmp(a->Get_Name(), b->Get_Name());
+        // Retain distinct presets sharing the same translated display name.
+        return result != 0 ? result : stricmp(a->Get_Definition_Name(), b->Get_Definition_Name());
+    }
+    void Build_Object_List()
+    {
+        ObjectList.Delete_All();
+        // Every loaded vehicle preset gets its own row, including mission
+        // variants, regardless of encyclopedia reveal.
+		for (DefinitionClass *definition = DefinitionMgrClass::Get_First(CLASSID_GAME_OBJECT_DEF_VEHICLE);
+             definition != NULL; definition = DefinitionMgrClass::Get_Next(definition)) {
+            if (definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE) continue;
+            VehicleGameObjDef *soldier = (VehicleGameObjDef *)definition;
+            WideStringClass name;
+            const uint32 name_id = soldier->Get_Translated_Name_ID();
+            if (name_id != 0 && TranslateDBClass::Find_Object(name_id) != NULL) {
+                const WCHAR *translated = TRANSLATE(name_id);
+                if (translated != NULL) name = translated;
+            }
+            if (name.Get_Length() == 0) name.Convert_From(definition->Get_Name());
+            EvaViewerObjectClass entry;
+            entry.Set_ID(definition->Get_ID());
+            entry.Set_Definition_Name(definition->Get_Name());
+            entry.Set_Player_Type(soldier->Get_Default_Player_Type());
+            entry.Set_Model_Name(Preset_Model(soldier));
+            entry.Set_Name(name);
+            entry.Set_Affiliation(name);
+            ObjectList.Add(entry);
+        }
+    }
+    bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
+    void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
+    {
+        Prepare_Model(model);
+        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0f);
+        Update_Display_Facing();
+    }
+    void Update_Display_Facing()
+    {
+        if (ViewerCtrl->Peek_Model() != NULL) {
+            Matrix3D facing(1);
+            facing.Rotate_Z(DEG_TO_RADF(45.0F));
+            ViewerCtrl->Peek_Model()->Set_Transform(facing);
+        }
+    }
+    void On_Frame_Update()
+    {
+        Update_Display_Facing();
+        CheckBoxCtrlClass *repair = (CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_AUTO_REPAIR);
+        repair->Enable(Can_Select_Vehicle());
+        if (Can_Select_Vehicle() && Is_Visible() && repair->Get_Check() != Get_Creative_Auto_Repair()) {
+            Set_Creative_Auto_Repair(repair->Get_Check());
+        }
+        Get_Dlg_Item(IDC_CREATIVE_VEHICLE_SELECT)->Enable(Can_Select_Vehicle() && ListCtrl->Get_Curr_Sel() >= 0);
+        EvaViewerTabClass::On_Frame_Update();
+    }
+    void On_Command(int ctrl_id, int message_id, DWORD param)
+    {
+        if (ctrl_id != IDC_CREATIVE_VEHICLE_SELECT) {
+            EvaViewerTabClass::On_Command(ctrl_id, message_id, param);
+            return;
+        }
+        if (!Can_Select_Vehicle() || ListCtrl->Get_Curr_Sel() < 0) return;
+        EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
+        DefinitionClass *definition = DefinitionMgrClass::Find_Definition(entry->Get_ID(), false);
+        if (definition == NULL || definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE) return;
+        Set_Creative_Auto_Repair(((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_AUTO_REPAIR))->Get_Check());
+        Cancel_Infantry_Placement();
+        InfantryPreview = WW3DAssetManager::Get_Instance()->Create_Render_Obj(entry->Get_Model_Name());
+        if (InfantryPreview == NULL) return;
+        VehiclePlacement = true;
+        InfantryPreset = definition->Get_Name();
+        InfantryDistance = 10.0F;
+        InfantryHeight = 0.0F;
+        InfantryRotationSteps = 0;
+        PreviewScene = COMBAT_SCENE;
+        PreviewScene->Add_Ref();
+        PreviewScene->Add_Render_Object(InfantryPreview);
+        SuppressPlacementInput = true;
+        CreativeModeMenuClass::Get_Instance()->On_Command(IDC_MENU_BACK_BUTTON, 0, 0);
+    }
+};
+
 void CreativeModeMenuClass::Update_Placement_Input()
 {
+    Update_Creative_Auto_Repair();
     const bool left = (DirectInput::Get_Mouse_Button(DirectInput::BUTTON_MOUSE_LEFT) & DirectInput::DI_BUTTON_HELD) != 0;
     const bool right = (DirectInput::Get_Mouse_Button(DirectInput::BUTTON_MOUSE_RIGHT) & DirectInput::DI_BUTTON_HELD) != 0;
     if (InfantryPreview != NULL || SuppressPlacementInput) {
@@ -240,13 +376,26 @@ void CreativeModeMenuClass::Update_Placement_Input()
         if (COMBAT_STAR != NULL) {
             COMBAT_STAR->Get_Control().Set_Boolean(ControlClass::BOOLEAN_WEAPON_FIRE_PRIMARY, false);
             COMBAT_STAR->Get_Control().Set_Boolean(ControlClass::BOOLEAN_WEAPON_FIRE_SECONDARY, false);
+            if (COMBAT_STAR->Get_Weapon() != NULL) {
+                COMBAT_STAR->Get_Weapon()->Set_Primary_Triggered(false);
+                COMBAT_STAR->Get_Weapon()->Set_Secondary_Triggered(false);
+            }
+            VehicleGameObj *vehicle = COMBAT_STAR->Get_Vehicle();
+            if (vehicle != NULL) {
+                vehicle->Set_Boolean_Control(ControlClass::BOOLEAN_WEAPON_FIRE_PRIMARY, false);
+                vehicle->Set_Boolean_Control(ControlClass::BOOLEAN_WEAPON_FIRE_SECONDARY, false);
+                if (vehicle->Get_Weapon() != NULL) {
+                    vehicle->Get_Weapon()->Set_Primary_Triggered(false);
+                    vehicle->Get_Weapon()->Set_Secondary_Triggered(false);
+                }
+            }
         }
     }
     if (InfantryPreview == NULL) {
         if (!left && !right) SuppressPlacementInput = false;
         return;
     }
-    if (!Can_Select_Character() || COMBAT_SCENE != PreviewScene ||
+    if (!(VehiclePlacement ? Can_Select_Vehicle() : Can_Select_Character()) || COMBAT_SCENE != PreviewScene ||
         !GameInFocus || Input::Is_Console_Enabled() || DialogMgrClass::Get_Dialog_Count() != 0 ||
         COMBAT_CAMERA == NULL || COMBAT_CAMERA->Is_In_Cinematic()) {
         Cancel_Infantry_Placement();
@@ -286,14 +435,22 @@ void CreativeModeMenuClass::Update_Placement_Preview()
     COMBAT_SCENE->Cast_Ray(ray);
     if (result.Fraction < 1.0F) position.Z = position.Z + 3.0F - 103.0F * result.Fraction;
     position.Z += InfantryHeight;
+    if (VehiclePlacement) {
+        AABoxClass bounds;
+        InfantryPreview->Get_Obj_Space_Bounding_Box(bounds);
+        position.Z -= bounds.Center.Z - bounds.Extent.Z;
+    }
     InfantryTransform.Make_Identity();
-    InfantryTransform.Rotate_Z(InfantryInitialFacing + DEG_TO_RADF(45.0F * InfantryRotationSteps));
+    InfantryTransform.Rotate_Z((VehiclePlacement ? COMBAT_STAR->Get_Transform().Get_Z_Rotation() : InfantryInitialFacing) + DEG_TO_RADF(45.0F * InfantryRotationSteps));
     InfantryTransform.Set_Translation(position);
     InfantryPreview->Set_Transform(InfantryTransform);
     if (InfantrySpawnRequested) {
         PhysicalGameObj *object = ObjectLibraryManager::Create_Object(InfantryPreset);
         if (object != NULL) {
             object->Set_Transform(InfantryTransform);
+            if (object->As_VehicleGameObj() != NULL) {
+                object->As_VehicleGameObj()->Set_Player_Type(COMBAT_STAR->Get_Player_Type());
+            }
             if (object->As_SoldierGameObj() != NULL) object->As_SoldierGameObj()->Innate_Enable();
         }
         Cancel_Infantry_Placement();
@@ -680,7 +837,7 @@ CreativeModeMenuClass::On_Init_Dialog (void)
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeObjectivesTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeCharactersTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeWeaponsTabClass);
-		TABCTRL_ADD_TAB (tab_ctrl, EvaVehiclesTabClass);
+		TABCTRL_ADD_TAB (tab_ctrl, CreativeVehiclesTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaBuildingsTabClass);
 
 		//

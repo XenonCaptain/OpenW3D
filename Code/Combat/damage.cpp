@@ -38,6 +38,9 @@
 **	Includes
 */
 #include "damage.h"
+#include "creativeautorepair.h"
+#include "vehicle.h"
+#include "gameobjref.h"
 #include "assets.h"
 #include "debug.h"
 #include "smartgameobj.h"
@@ -57,6 +60,33 @@
 #include "bitpackids.h"
 #include "gametype.h"
 #include "csdamageevent.h"
+
+namespace {
+GameObjReference CreativeRepairOwner;
+void Repair_Creative_Object(DamageableGameObj *object)
+{
+    if (object == NULL || object->Is_Delete_Pending()) return;
+    DefenseObjectClass *defense = object->Get_Defense_Object();
+    if (defense->Get_Health() <= 0) return;
+    defense->Set_Health(defense->Get_Health_Max());
+    defense->Set_Shield_Strength(defense->Get_Shield_Strength_Max());
+}
+}
+bool Get_Creative_Auto_Repair()
+{
+    return COMBAT_STAR != NULL && CreativeRepairOwner.Get_Ptr() == COMBAT_STAR;
+}
+void Update_Creative_Auto_Repair()
+{
+    if (!CombatManager::I_Am_Server() || !Get_Creative_Auto_Repair()) return;
+    Repair_Creative_Object(COMBAT_STAR);
+    Repair_Creative_Object(COMBAT_STAR->Get_Vehicle());
+}
+void Set_Creative_Auto_Repair(bool enabled)
+{
+    CreativeRepairOwner = enabled ? COMBAT_STAR : NULL;
+    Update_Creative_Auto_Repair();
+}
 
 #ifdef WWDEBUG
 bool	DefenseObjectClass::OneShotKills	= false;
@@ -783,6 +813,15 @@ void	DefenseObjectClass::Request_Damage( const OffenseObjectClass & offense, flo
 */
 float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float scale, int alternate_skin )
 {
+    // Repair before applying damage, including lethal hits. Protection follows
+    // the player's current vehicle, so exiting immediately releases the old one.
+    if (CombatManager::I_Am_Server() && Get_Creative_Auto_Repair() &&
+        (Get_Owner() == COMBAT_STAR || (COMBAT_STAR->Get_Vehicle() != NULL &&
+        Get_Owner() == COMBAT_STAR->Get_Vehicle()))) {
+        Repair_Creative_Object(Get_Owner());
+        return Health;
+    }
+
 	SmartGameObj * smart = NULL;
 
 	if ( offense.Get_Owner() != NULL ) {
