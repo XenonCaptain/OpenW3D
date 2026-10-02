@@ -48,6 +48,10 @@
 #include "viewerctrl.h"
 #include "dialogtext.h"
 #include "checkboxctrl.h"
+#include "weapons.h"
+#include "weaponbag.h"
+#include "creativeammo.h"
+#include "stylemgr.h"
 
 
 
@@ -295,6 +299,132 @@ void CreativeModeMenuClass::Update_Placement_Preview()
         Cancel_Infantry_Placement();
     }
 }
+
+class CreativeWeaponsTabClass : public EvaViewerTabClass
+{
+public:
+    CreativeWeaponsTabClass() : EvaViewerTabClass(IDD_CREATIVE_WEAPONS_TAB) {}
+    static StringClass Preview_Model_Name(const char *filename)
+    {
+        StringClass name;
+        Strip_Path_From_Filename(name, filename);
+        const char *slash = strrchr(name, '/');
+        if (slash != NULL) { StringClass basename(slash + 1); name = basename; }
+        if (name.Get_Length() >= 4 && stricmp(name.Peek_Buffer() + name.Get_Length() - 4, ".w3d") == 0) {
+            name.Erase(name.Get_Length() - 4, 4);
+        }
+        return name;
+    }
+    void Load_Preview_Fallback()
+    {
+        if (ViewerCtrl->Peek_Model() != NULL || ListCtrl->Get_Curr_Sel() < 0) return;
+        EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
+        const WeaponDefinitionClass *weapon = WeaponManager::Find_Weapon_Definition(entry->Get_ID());
+        if (weapon == NULL) return;
+        const char *models[] = { weapon->Model, weapon->FirstPersonModel, weapon->BackModel };
+        for (int i = 0; i < 3 && ViewerCtrl->Peek_Model() == NULL; ++i) {
+            StringClass name = Preview_Model_Name(models[i]);
+            if (!name.Is_Empty()) ViewerCtrl->Set_Model(name);
+        }
+        // The standalone preview does not depend on a soldier's gun animation.
+        ViewerCtrl->Set_Animation("");
+    }
+    void On_ListCtrl_Sel_Change(ListCtrlClass *list, int ctrl_id, int old_index, int new_index)
+    {
+        EvaViewerTabClass::On_ListCtrl_Sel_Change(list, ctrl_id, old_index, new_index);
+        Load_Preview_Fallback();
+    }
+    void On_Init_Dialog()
+    {
+        Set_Encyclopedia_Type(EncyclopediaMgrClass::TYPE_WEAPON);
+        Set_List_Ctrl((ListCtrlClass *)Get_Dlg_Item(IDC_LIST_CTRL));
+        Set_Viewer_Ctrl((ViewerCtrlClass *)Get_Dlg_Item(IDC_VIEWER_CTRL));
+        Set_INI_Filename("weapons.ini");
+        EvaViewerTabClass::On_Init_Dialog();
+        Load_Preview_Fallback();
+        const uint32 color = StyleMgrClass::Get_Text_Color();
+        const Vector3 yellow(((color >> 16) & 255) / 255.0F, ((color >> 8) & 255) / 255.0F, (color & 255) / 255.0F);
+        for (int row = 0; row < ListCtrl->Get_Entry_Count(); ++row) ListCtrl->Set_Entry_Color(row, 0, yellow);
+        ((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_INFINITE_AMMO))->Set_Check(Get_Creative_Infinite_Ammo());
+    }
+    void Build_Object_List()
+    {
+        EvaViewerTabClass::Build_Object_List();
+        DynamicVectorClass<EvaViewerObjectClass> encyclopedia = ObjectList;
+        ObjectList.Delete_All();
+        for (DefinitionClass *def = DefinitionMgrClass::Get_First(CLASSID_DEF_WEAPON);
+             def != NULL; def = DefinitionMgrClass::Get_Next(def, CLASSID_DEF_WEAPON)) {
+            WeaponDefinitionClass *weapon = (WeaponDefinitionClass *)def;
+            EvaViewerObjectClass entry;
+            entry.Set_ID(def->Get_ID());
+            entry.Set_Definition_Name(def->Get_Name());
+            StringClass model = weapon->Model;
+            if (model.Is_Empty()) model = weapon->FirstPersonModel;
+            if (model.Is_Empty()) {
+                for (int i = 0; i < encyclopedia.Count(); ++i) {
+                    if (stricmp(encyclopedia[i].Get_Definition_Name(), def->Get_Name()) == 0 ||
+                        (weapon->IconNameID != 0 && wcsicmp(encyclopedia[i].Get_Name(), TRANSLATE(weapon->IconNameID)) == 0)) {
+                        model = encyclopedia[i].Get_Model_Name();
+                        break;
+                    }
+                }
+            }
+            entry.Set_Model_Name(Preview_Model_Name(model));
+            entry.Set_Anim_Name("");
+            if (weapon->IconNameID != 0) entry.Set_Name(TRANSLATE(weapon->IconNameID));
+            if (entry.Get_Name()[0] == 0) {
+                WideStringClass fallback;
+                fallback.Convert_From(def->Get_Name());
+                entry.Set_Name(fallback);
+            }
+            // Neutral entries use the viewer's alphabetical name sort.
+            ObjectList.Add(entry);
+        }
+    }
+    bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
+    void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
+    {
+        Prepare_Model(model);
+        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0F);
+    }
+    void On_Frame_Update()
+    {
+        const bool enabled = Can_Select_Character();
+        Get_Dlg_Item(IDC_CREATIVE_WEAPON_SELECT)->Enable(enabled && ListCtrl->Get_Curr_Sel() >= 0);
+        CheckBoxCtrlClass *checkbox = (CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_INFINITE_AMMO);
+        checkbox->Enable(enabled);
+        if (enabled && Is_Visible() && checkbox->Get_Check() != Get_Creative_Infinite_Ammo()) {
+            Set_Creative_Infinite_Ammo(checkbox->Get_Check());
+            WeaponClass *weapon = COMBAT_STAR->Get_Weapon();
+            if (checkbox->Get_Check() && weapon != NULL && weapon->Get_Clip_Rounds() == 0) {
+                weapon->Set_Clip_Rounds(MAX(1, (int)weapon->Get_Definition()->ClipSize));
+                COMBAT_STAR->Get_Weapon_Bag()->Force_Changed();
+            }
+        }
+        EvaViewerTabClass::On_Frame_Update();
+    }
+    void On_Command(int ctrl_id, int message_id, DWORD param)
+    {
+        if (ctrl_id != IDC_CREATIVE_WEAPON_SELECT) {
+            EvaViewerTabClass::On_Command(ctrl_id, message_id, param);
+            return;
+        }
+        if (!Can_Select_Character() || ListCtrl->Get_Curr_Sel() < 0) return;
+        EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
+        const WeaponDefinitionClass *definition = WeaponManager::Find_Weapon_Definition(entry->Get_ID());
+        if (definition == NULL) return;
+        WeaponBagClass *bag = COMBAT_STAR->Get_Weapon_Bag();
+        WeaponClass *weapon = bag->Add_Weapon(definition, MAX(1, (int)definition->ClipSize), true);
+        if (weapon == NULL) return;
+        weapon->Set_Clip_Rounds(MAX(1, (int)definition->ClipSize));
+        weapon->Set_Inventory_Rounds(definition->MaxInventoryRounds);
+        bag->Select_Weapon(weapon);
+        bag->Force_Changed();
+        Set_Creative_Infinite_Ammo(((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_INFINITE_AMMO))->Get_Check());
+        SuppressPlacementInput = true;
+        CreativeModeMenuClass::Get_Instance()->On_Command(IDC_MENU_BACK_BUTTON, 0, 0);
+    }
+};
 
 // Creative Mode uses its own tab so the normal EVA objective view is unchanged.
 class CreativeObjectivesTabClass : public ChildDialogClass
@@ -549,7 +679,7 @@ CreativeModeMenuClass::On_Init_Dialog (void)
 		//
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeObjectivesTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, CreativeCharactersTabClass);
-		TABCTRL_ADD_TAB (tab_ctrl, EvaWeaponsTabClass);
+		TABCTRL_ADD_TAB (tab_ctrl, CreativeWeaponsTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaVehiclesTabClass);
 		TABCTRL_ADD_TAB (tab_ctrl, EvaBuildingsTabClass);
 

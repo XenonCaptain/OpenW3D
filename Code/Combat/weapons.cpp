@@ -74,6 +74,11 @@
 #include "diaglog.h"
 #include "playerdata.h"
 #include "cheatmgr.h"
+#include "creativeammo.h"
+
+namespace { GameObjReference CreativeAmmoOwner; }
+bool Get_Creative_Infinite_Ammo() { return COMBAT_STAR != NULL && CreativeAmmoOwner.Get_Ptr() == COMBAT_STAR; }
+void Set_Creative_Infinite_Ammo(bool enabled) { CreativeAmmoOwner = enabled ? COMBAT_STAR : NULL; }
 
 
 /*
@@ -540,6 +545,7 @@ bool	WeaponClass::Is_Ammo_Maxed( void )
 
 void	WeaponClass::Decrement_Rounds( int rounds )
 {
+	if (Get_Creative_Infinite_Ammo() && Owner == COMBAT_STAR) return;
 	if ( ClipRounds != -1 ) {
 		ClipRounds -= rounds;
 		if ( ClipRounds <= 0 ) {
@@ -550,6 +556,7 @@ void	WeaponClass::Decrement_Rounds( int rounds )
 
 void	WeaponClass::Do_Reload( void )
 {
+	if (Get_Creative_Infinite_Ammo() && Owner == COMBAT_STAR && ClipRounds != 0) return;
 	int added = (int)Definition->ClipSize - (int)ClipRounds;
 
 	//
