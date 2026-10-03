@@ -103,6 +103,18 @@ bool Is_Soldier_Definition(DefinitionClass *definition)
         class_id == CLASSID_GAME_OBJECT_DEF_RAVESHAW_BOSS;
 }
 
+bool Is_Excluded_Creative_Preset(const char *name, bool vehicle = false)
+{
+    const char *excluded[] = {
+        "Mounted", "Weapons_Infantry", "Weapons_Structures", "Weapons_Test",
+        "Weapons_Vehicles", "Nod Vehicles", "GDI Vehicles"
+    };
+    for (int i = 0; i < sizeof(excluded) / sizeof(excluded[0]); ++i) {
+        if (stricmp(name, excluded[i]) == 0) return true;
+    }
+    return vehicle && stricmp(name, "Civilian") == 0;
+}
+
 bool Can_Select_Character()
 {
     return cNetwork::I_Am_Server() && COMBAT_STAR != NULL &&
@@ -170,7 +182,8 @@ public:
         // variants and soldier-derived bosses, regardless of encyclopedia reveal.
 		for (DefinitionClass *definition = DefinitionMgrClass::Get_First(CLASSID_GAME_OBJECT_DEF_SOLDIER);
              definition != NULL; definition = DefinitionMgrClass::Get_Next(definition)) {
-            if (!Is_Soldier_Definition(definition) || stricmp(definition->Get_Name(), "Soldier_Presets") == 0) continue;
+            if (!Is_Soldier_Definition(definition) || stricmp(definition->Get_Name(), "Soldier_Presets") == 0 ||
+                Is_Excluded_Creative_Preset(definition->Get_Name())) continue;
             SoldierGameObjDef *soldier = (SoldierGameObjDef *)definition;
             WideStringClass name;
             const uint32 name_id = soldier->Get_Translated_Name_ID();
@@ -296,7 +309,8 @@ public:
         // variants, regardless of encyclopedia reveal.
 		for (DefinitionClass *definition = DefinitionMgrClass::Get_First(CLASSID_GAME_OBJECT_DEF_VEHICLE);
              definition != NULL; definition = DefinitionMgrClass::Get_Next(definition)) {
-            if (definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE) continue;
+            if (definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE ||
+                Is_Excluded_Creative_Preset(definition->Get_Name(), true)) continue;
             VehicleGameObjDef *soldier = (VehicleGameObjDef *)definition;
             WideStringClass name;
             const uint32 name_id = soldier->Get_Translated_Name_ID();
@@ -534,6 +548,7 @@ public:
         ObjectList.Delete_All();
         for (DefinitionClass *def = DefinitionMgrClass::Get_First(CLASSID_DEF_WEAPON);
              def != NULL; def = DefinitionMgrClass::Get_Next(def, CLASSID_DEF_WEAPON)) {
+            if (Is_Excluded_Creative_Preset(def->Get_Name())) continue;
             WeaponDefinitionClass *weapon = (WeaponDefinitionClass *)def;
             EvaViewerObjectClass entry;
             entry.Set_ID(def->Get_ID());
