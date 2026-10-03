@@ -321,7 +321,7 @@ EvaViewerTabClass::View_Entry (int entry_index)
 		//
 		//	Special-case vehicles so we can get the wheels to "drop"
 		//
-		if (EncyclopediaType == EncyclopediaMgrClass::TYPE_VEHICLE) {
+		if (EncyclopediaType == EncyclopediaMgrClass::TYPE_VEHICLE && !Use_Render_Model_Only ()) {
 			
 			RenderObjClass *new_model = NULL;
 
@@ -419,6 +419,9 @@ EvaViewerTabClass::Prepare_Model (RenderObjClass *model)
 		//
 		for (int index = 0; index < model->Get_Num_Sub_Objects(); index ++) {
 			RenderObjClass *sub_obj = model->Get_Sub_Object (index);
+			if (sub_obj == NULL) {
+				continue;
+			}
 
 			//
 			//	Hide the muzzle flash (if necessary)

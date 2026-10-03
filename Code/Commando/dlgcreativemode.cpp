@@ -189,11 +189,13 @@ public:
             ObjectList.Add(entry);
         }
     }
+    // Viewport browsing loads W3D render models without gameplay objects.
+    bool Use_Render_Model_Only(void) const { return true; }
     bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
     void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
     {
         Prepare_Model(model);
-        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0f);
+        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0F);
         Update_Display_Facing();
     }
     void Update_Display_Facing()
@@ -313,11 +315,13 @@ public:
             ObjectList.Add(entry);
         }
     }
+    // Browsing must never create gameplay objects or queue their destruction.
+    bool Use_Render_Model_Only(void) const { return true; }
     bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
     void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
     {
         Prepare_Model(model);
-        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0f);
+        viewer->Set_Interface_Mode(ViewerCtrlClass::Z_ROTATION, 30.0F);
         Update_Display_Facing();
     }
     void Update_Display_Facing()
@@ -348,7 +352,10 @@ public:
         if (!Can_Select_Vehicle() || ListCtrl->Get_Curr_Sel() < 0) return;
         EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
         DefinitionClass *definition = DefinitionMgrClass::Find_Definition(entry->Get_ID(), false);
-        if (definition == NULL || definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE) return;
+        if (definition == NULL || definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE ||
+            entry->Get_Model_Name()[0] == 0) return;
+        StringClass error;
+        if (!definition->Is_Valid_Config(error)) return;
         Set_Creative_Auto_Repair(((CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_AUTO_REPAIR))->Get_Check());
         Cancel_Infantry_Placement();
         InfantryPreview = WW3DAssetManager::Get_Instance()->Create_Render_Obj(entry->Get_Model_Name());
@@ -361,10 +368,17 @@ public:
         PreviewScene = COMBAT_SCENE;
         PreviewScene->Add_Ref();
         PreviewScene->Add_Render_Object(InfantryPreview);
+        PhysClass *preview_physics = (PhysClass *)InfantryPreview->Get_User_Data();
+        if (preview_physics != NULL) preview_physics->Enable_Dont_Save(true);
         SuppressPlacementInput = true;
         CreativeModeMenuClass::Get_Instance()->On_Command(IDC_MENU_BACK_BUTTON, 0, 0);
     }
 };
+
+void CreativeModeMenuClass::Cancel_Placement()
+{
+    Cancel_Infantry_Placement();
+}
 
 void CreativeModeMenuClass::Update_Placement_Input()
 {
@@ -445,6 +459,15 @@ void CreativeModeMenuClass::Update_Placement_Preview()
     InfantryTransform.Set_Translation(position);
     InfantryPreview->Set_Transform(InfantryTransform);
     if (InfantrySpawnRequested) {
+        DefinitionClass *definition = DefinitionMgrClass::Find_Typed_Definition(InfantryPreset, CLASSID_GAME_OBJECTS);
+        StringClass error;
+        if (!(VehiclePlacement ? Can_Select_Vehicle() : Can_Select_Character()) ||
+            definition == NULL ||
+            (VehiclePlacement && definition->Get_Class_ID() != CLASSID_GAME_OBJECT_DEF_VEHICLE) ||
+            !definition->Is_Valid_Config(error)) {
+            Cancel_Infantry_Placement();
+            return;
+        }
         PhysicalGameObj *object = ObjectLibraryManager::Create_Object(InfantryPreset);
         if (object != NULL) {
             object->Set_Transform(InfantryTransform);
@@ -538,6 +561,8 @@ public:
             ObjectList.Add(entry);
         }
     }
+    // Viewport browsing loads W3D render models without gameplay objects.
+    bool Use_Render_Model_Only(void) const { return true; }
     bool Is_Entry_Visible(const EvaViewerObjectClass &) { return true; }
     void On_ViewerCtrl_Model_Loaded(ViewerCtrlClass *viewer, int, RenderObjClass *model)
     {

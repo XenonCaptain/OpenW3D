@@ -57,6 +57,7 @@ public:
 	static void Update_Toggle (void);
 	static void Update_Placement_Input (void);
 	static void Update_Placement_Preview (void);
+	static void Cancel_Placement (void);
 	void		On_Init_Dialog (void);
 	void		On_Destroy (void);
 	void		On_Command (int ctrl_id, int mesage_id, DWORD param);

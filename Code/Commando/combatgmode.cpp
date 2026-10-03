@@ -35,6 +35,7 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "combatgmode.h"
+#include "dlgcreativemode.h"
 #include "level.h"
 #include "input.h"
 #include "cnetwork.h"
@@ -860,6 +861,7 @@ void CombatGameModeClass::Load_Level( void )
 
 void 	CombatGameModeClass::Core_Shutdown()
 {
+	CreativeModeMenuClass::Cancel_Placement();
 	Debug_Say(("CombatGameModeClass::Core_Shutdown\n"));
 
 	//

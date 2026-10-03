@@ -171,6 +171,7 @@ protected:
 	void		View_Entry (int entry_index);
 
 	virtual void Build_Object_List (void);
+	virtual bool Use_Render_Model_Only (void) const { return false; }
 	virtual bool Is_Entry_Visible(const EvaViewerObjectClass &object) { return EncyclopediaMgrClass::Is_Object_Revealed(EncyclopediaType, object.Get_ID()); }
 	void		Prepare_Model (RenderObjClass *model);
 
