@@ -498,6 +498,16 @@ class CreativeWeaponsTabClass : public EvaViewerTabClass
 {
 public:
     CreativeWeaponsTabClass() : EvaViewerTabClass(IDD_CREATIVE_WEAPONS_TAB) {}
+    ArmedGameObj *Weapon_Target()
+    {
+        if (!Can_Select_Vehicle()) return NULL;
+        VehicleGameObj *vehicle = COMBAT_STAR->Get_Vehicle();
+        if (vehicle != NULL) {
+            return vehicle->Is_Delete_Pending() || vehicle->Get_Defense_Object()->Get_Health() <= 0 ?
+                NULL : static_cast<ArmedGameObj *>(vehicle);
+        }
+        return COMBAT_STAR;
+    }
     static StringClass Preview_Model_Name(const char *filename)
     {
         StringClass name;
@@ -586,16 +596,17 @@ public:
     }
     void On_Frame_Update()
     {
-        const bool enabled = Can_Select_Character();
+        ArmedGameObj *target = Weapon_Target();
+        const bool enabled = target != NULL;
         Get_Dlg_Item(IDC_CREATIVE_WEAPON_SELECT)->Enable(enabled && ListCtrl->Get_Curr_Sel() >= 0);
         CheckBoxCtrlClass *checkbox = (CheckBoxCtrlClass *)Get_Dlg_Item(IDC_CREATIVE_INFINITE_AMMO);
         checkbox->Enable(enabled);
         if (enabled && Is_Visible() && checkbox->Get_Check() != Get_Creative_Infinite_Ammo()) {
             Set_Creative_Infinite_Ammo(checkbox->Get_Check());
-            WeaponClass *weapon = COMBAT_STAR->Get_Weapon();
+            WeaponClass *weapon = target->Get_Weapon();
             if (checkbox->Get_Check() && weapon != NULL && weapon->Get_Clip_Rounds() == 0) {
                 weapon->Set_Clip_Rounds(MAX(1, (int)weapon->Get_Definition()->ClipSize));
-                COMBAT_STAR->Get_Weapon_Bag()->Force_Changed();
+                target->Get_Weapon_Bag()->Force_Changed();
             }
         }
         EvaViewerTabClass::On_Frame_Update();
@@ -606,11 +617,13 @@ public:
             EvaViewerTabClass::On_Command(ctrl_id, message_id, param);
             return;
         }
-        if (!Can_Select_Character() || ListCtrl->Get_Curr_Sel() < 0) return;
+        ArmedGameObj *target = Weapon_Target();
+        if (target == NULL || ListCtrl->Get_Curr_Sel() < 0) return;
         EvaViewerObjectClass *entry = (EvaViewerObjectClass *)ListCtrl->Get_Entry_Data(ListCtrl->Get_Curr_Sel(), 0);
         const WeaponDefinitionClass *definition = WeaponManager::Find_Weapon_Definition(entry->Get_ID());
         if (definition == NULL) return;
-        WeaponBagClass *bag = COMBAT_STAR->Get_Weapon_Bag();
+        WeaponBagClass *bag = target->Get_Weapon_Bag();
+        if (bag == NULL) return;
         WeaponClass *weapon = bag->Add_Weapon(definition, MAX(1, (int)definition->ClipSize), true);
         if (weapon == NULL) return;
         weapon->Set_Clip_Rounds(MAX(1, (int)definition->ClipSize));

@@ -76,9 +76,31 @@
 #include "cheatmgr.h"
 #include "creativeammo.h"
 
-namespace { GameObjReference CreativeAmmoOwner; }
-bool Get_Creative_Infinite_Ammo() { return COMBAT_STAR != NULL && CreativeAmmoOwner.Get_Ptr() == COMBAT_STAR; }
-void Set_Creative_Infinite_Ammo(bool enabled) { CreativeAmmoOwner = enabled ? COMBAT_STAR : NULL; }
+namespace {
+GameObjReference CreativeAmmoOwner;
+GameObjReference CreativeVehicleAmmoOwner;
+
+ArmedGameObj *Current_Creative_Weapon_Owner()
+{
+    if (COMBAT_STAR == NULL) return NULL;
+    VehicleGameObj *vehicle = COMBAT_STAR->Get_Vehicle();
+    return vehicle != NULL ? static_cast<ArmedGameObj *>(vehicle) : COMBAT_STAR;
+}
+}
+bool Get_Creative_Infinite_Ammo()
+{
+    ArmedGameObj *owner = Current_Creative_Weapon_Owner();
+    if (owner == NULL) return false;
+    return owner == COMBAT_STAR ? CreativeAmmoOwner.Get_Ptr() == owner :
+        CreativeVehicleAmmoOwner.Get_Ptr() == owner;
+}
+void Set_Creative_Infinite_Ammo(bool enabled)
+{
+    ArmedGameObj *owner = Current_Creative_Weapon_Owner();
+    if (owner == NULL) return;
+    if (owner == COMBAT_STAR) CreativeAmmoOwner = enabled ? owner : NULL;
+    else CreativeVehicleAmmoOwner = enabled ? owner : NULL;
+}
 
 
 /*
@@ -545,7 +567,7 @@ bool	WeaponClass::Is_Ammo_Maxed( void )
 
 void	WeaponClass::Decrement_Rounds( int rounds )
 {
-	if (Get_Creative_Infinite_Ammo() && Owner == COMBAT_STAR) return;
+	if (Get_Creative_Infinite_Ammo() && Owner.Get_Ptr() == Current_Creative_Weapon_Owner()) return;
 	if ( ClipRounds != -1 ) {
 		ClipRounds -= rounds;
 		if ( ClipRounds <= 0 ) {
@@ -556,7 +578,7 @@ void	WeaponClass::Decrement_Rounds( int rounds )
 
 void	WeaponClass::Do_Reload( void )
 {
-	if (Get_Creative_Infinite_Ammo() && Owner == COMBAT_STAR && ClipRounds != 0) return;
+	if (Get_Creative_Infinite_Ammo() && Owner.Get_Ptr() == Current_Creative_Weapon_Owner() && ClipRounds != 0) return;
 	int added = (int)Definition->ClipSize - (int)ClipRounds;
 
 	//
