@@ -123,14 +123,6 @@ if(WIN32)
         target_compile_definitions(binkstub INTERFACE W3D_HAS_BINK)
     endif()
 
-    # Do we want to build with miles for audio playback?
-    cmake_dependent_option(W3D_BUILD_OPTION_MILES "Build with miles." ON "NOT W3D_BUILD_OPTION_OPENAL" OFF)
-    add_feature_info(MilesBuild W3D_BUILD_OPTION_MILES "Build OpenW3D with Miles Audio")
-
-    if(W3D_BUILD_OPTION_MILES)
-        include(miles)
-    endif()
-
     option(W3D_BUILD_OPTION_ICU "Build with ICU." OFF)
     add_feature_info(ICUBuild W3D_BUILD_OPTION_ICU "Build OpenW3D with ICU")
 
