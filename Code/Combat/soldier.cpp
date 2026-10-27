@@ -109,6 +109,8 @@
 extern void Set_Local_Player_Yellow_Mesh(MeshClass *, bool);
 extern void Set_Local_Player_Yellow_Cleanup(void (*)(), bool (*)());
 void Reset_Local_Player_Yellow();
+extern void Update_Golden_Chaos_Loadout(SoldierGameObj *);
+extern void Capture_Golden_Chaos_Loadout(SoldierGameObj *);
 static bool Local_Player_Yellow_Allowed();
 
 namespace {
@@ -648,6 +650,7 @@ void	SoldierGameObj::Prepare_Speech_Framework( void )
 
 void	SoldierGameObj::Re_Init( const SoldierGameObjDef & definition )
 {
+	Capture_Golden_Chaos_Loadout(this);
 	if (YellowBody.Owner == this) YellowBody.Clear();
 	if (YellowHands.Owner == this) YellowHands.Clear();
 	if ( this == COMBAT_STAR ) {
@@ -2426,6 +2429,7 @@ static const char * _profile_name = "Soldier Think";
 //------------------------------------------------------------------------------------
 void	SoldierGameObj::Think( void )
 {
+	Update_Golden_Chaos_Loadout(this);
 	if (this == COMBAT_STAR || YellowBody.Owner == this) {
 		YellowBody.Update(this, Peek_Model(), WeaponRenderModel, BackWeaponRenderModel, BackFlagRenderModel);
 	}

@@ -42,6 +42,146 @@
 #include "wwpacket.h"
 #include "armedgameobj.h"
 #include "inventory.h"
+#include "combat.h"
+#include "soldier.h"
+#include "hud.h"
+#include <map>
+#include <algorithm>
+#ifndef PARAM_EDITING_ON
+#include "gamedata.h"
+#endif
+
+namespace {
+const char * const GoldenPresets[] = {
+	"CnC_Weapon_RepairGun_Player_Special", "Weapon_MineRemote_Player",
+	"Weapon_MineTimed_Player", "Weapon_MineProximity_Player", "Weapon_SniperRifle_Player"
+};
+struct GoldenInventory {
+	bool Initialized = false;
+	int Rounds[5] = { -1, 1, 1, 1, 4 }; // Loaded clip counts; all reserves are unlimited.
+	int Selected = 0; // Zero selects the sniper preset on first initialization.
+} GoldenInventoryState;
+struct GoldenBagState {
+	bool Loaded = false;
+	bool Initialized = false;
+};
+std::map<WeaponBagClass *, GoldenBagState> GoldenBags;
+}
+
+bool Golden_Chaos_Player(ArmedGameObj * owner)
+{
+#ifdef PARAM_EDITING_ON
+	return false;
+#else
+	return owner && owner == COMBAT_STAR && owner->As_SoldierGameObj() &&
+		The_Game() && The_Game()->Is_Single_Player();
+#endif
+}
+
+int Golden_Chaos_Weapon_Index(const char * name)
+{
+	if (name) for (int i = 0; i < 5; ++i) if (!stricmp(name, GoldenPresets[i])) return i;
+	return -1;
+}
+
+void Reset_Golden_Chaos_Loadout()
+{
+	GoldenInventoryState = GoldenInventory();
+	for (auto & entry : GoldenBags) entry.second.Initialized = false;
+}
+
+// Only remember bags which have actually received the loadout. In particular,
+// a newly spawned soldier's default C4 must never overwrite the carried count.
+void Capture_Golden_Chaos_Loadout(SoldierGameObj * soldier)
+{
+	if (!Golden_Chaos_Player(soldier)) return;
+	WeaponBagClass * bag = soldier->Get_Weapon_Bag();
+	auto state = GoldenBags.find(bag);
+	if (state == GoldenBags.end() || !state->second.Initialized) return;
+	for (int i = 1; i < bag->Get_Count(); ++i) {
+		WeaponClass * weapon = bag->Peek_Weapon(i);
+		int index = Golden_Chaos_Weapon_Index(weapon->Get_Name());
+		if (index >= 0) GoldenInventoryState.Rounds[index] = weapon->Get_Clip_Rounds();
+	}
+	if (bag->Get_Weapon()) GoldenInventoryState.Selected = bag->Get_Weapon()->Get_ID();
+}
+
+void Update_Golden_Chaos_Loadout(SoldierGameObj * soldier)
+{
+	if (!Golden_Chaos_Player(soldier)) return;
+	WeaponBagClass * bag = soldier->Get_Weapon_Bag();
+	const WeaponDefinitionClass * definitions[5];
+	// Validate all presets before clearing anything. Missing/modded databases
+	// leave the original inventory intact and may be retried on the next update.
+	for (int i = 0; i < 5; ++i) {
+		definitions[i] = WeaponManager::Find_Weapon_Definition(GoldenPresets[i]);
+		if (!definitions[i]) return;
+	}
+	GoldenBagState & state = GoldenBags[bag];
+	// An authored mission bag is not a restored save-game inventory.
+	const bool restored_bag = state.Loaded && !CombatManager::Is_First_Load();
+	const bool first_bag_update = !state.Initialized;
+	const bool first_loadout = !GoldenInventoryState.Initialized;
+	if (!GoldenInventoryState.Initialized) {
+		if (!restored_bag) bag->Clear_Weapons();
+		GoldenInventoryState.Initialized = true;
+	} else if (state.Initialized) {
+		Capture_Golden_Chaos_Loadout(soldier);
+	}
+	bool changed = false;
+	for (int i = 0; i < 5; ++i) {
+		WeaponClass * weapon = nullptr;
+		for (int j = 1; j < bag->Get_Count(); ++j) {
+			if (bag->Peek_Weapon(j)->Get_ID() == definitions[i]->Get_ID()) { weapon = bag->Peek_Weapon(j); break; }
+		}
+		const bool missing = !weapon;
+		if (missing) weapon = bag->Add_Weapon(definitions[i], 0);
+		if (!weapon) continue;
+		// Set_Owner installs/refreshes a private definition, including KeyNumber.
+		weapon->Set_Owner(soldier);
+		if (missing || (first_bag_update && !restored_bag)) {
+			const int rounds = GoldenInventoryState.Rounds[i];
+			weapon->Set_Clip_Rounds(i == 0 ? -1 : i == 4 ? 4 : std::min(std::max(rounds, 0), 1));
+			weapon->Set_Inventory_Rounds(-1);
+			changed = true;
+		}
+		if (!weapon->Does_Weapon_Exist()) { weapon->Set_Weapon_Exists(true); changed = true; }
+	}
+	state.Initialized = true;
+	if (first_bag_update) {
+		if (first_loadout || !restored_bag || !bag->Get_Weapon()) {
+			bag->Select_Weapon_ID(GoldenInventoryState.Selected ? GoldenInventoryState.Selected : definitions[4]->Get_ID());
+		}
+		changed = true;
+	}
+	if (changed) { bag->Force_Changed(); HUDClass::Force_Weapon_Chart_Update(); }
+	Capture_Golden_Chaos_Loadout(soldier);
+}
+
+// The carry record includes zero rounds and missing weapons. It contains IDs
+// and counts only, so it survives definition-database and soldier replacement.
+void Save_Golden_Chaos_Loadout(ChunkSaveClass & save)
+{
+	Capture_Golden_Chaos_Loadout(COMBAT_STAR);
+	const int version = 2;
+	save.Write(&version, sizeof(version));
+	save.Write(&GoldenInventoryState.Initialized, sizeof(bool));
+	save.Write(GoldenInventoryState.Rounds, sizeof(GoldenInventoryState.Rounds));
+	save.Write(&GoldenInventoryState.Selected, sizeof(int));
+}
+
+bool Load_Golden_Chaos_Loadout(ChunkLoadClass & load)
+{
+	GoldenInventory restored;
+	int version = 0;
+	if (load.Read(&version, sizeof(version)) != sizeof(version) || version != 2 ||
+		load.Read(&restored.Initialized, sizeof(bool)) != sizeof(bool) ||
+		load.Read(restored.Rounds, sizeof(restored.Rounds)) != sizeof(restored.Rounds) ||
+		load.Read(&restored.Selected, sizeof(int)) != sizeof(int)) return false;
+	for (int i = 1; i <= 3; ++i) if (restored.Rounds[i] < 0 || restored.Rounds[i] > 1) return false;
+	GoldenInventoryState = restored;
+	return true;
+}
 
 /*
 **
@@ -59,6 +199,8 @@ WeaponBagClass::WeaponBagClass( ArmedGameObj * owner ) :
 
 WeaponBagClass::~WeaponBagClass( void )
 {
+	if (Golden_Chaos_Player(Owner)) Capture_Golden_Chaos_Loadout(Owner->As_SoldierGameObj());
+	GoldenBags.erase(this);
 	while ( WeaponList.Count() ) {
 		delete	WeaponList[0];
 		WeaponList.Delete( 0 );
@@ -97,6 +239,7 @@ bool	WeaponBagClass::Save( ChunkSaveClass & csave )
 
 bool	WeaponBagClass::Load( ChunkLoadClass &cload )
 {
+	GoldenBags[this].Loaded = true;
 	while (cload.Open_Chunk()) {
 		switch(cload.Cur_Chunk_ID()) {
 
@@ -174,6 +317,8 @@ void	WeaponBagClass::Remove_Weapon( int index )
 */
 void	WeaponBagClass::Clear_Weapons( void )
 {
+	// Deselect before deletion: the selected entry may otherwise be dangling.
+	Select_Index(0);
 	// find the next existing weapons
 	while ( WeaponList.Count() > 1 ) {
 		int index = WeaponList.Count()-1;
@@ -182,6 +327,7 @@ void	WeaponBagClass::Clear_Weapons( void )
 	}
 
 	Select_Index( 0 );
+	IsChanged = HUDIsChanged = true;
 	return ;
 }
 

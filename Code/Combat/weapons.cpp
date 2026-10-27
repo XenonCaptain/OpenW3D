@@ -75,6 +75,85 @@
 #include "playerdata.h"
 #include "cheatmgr.h"
 #include <algorithm>
+#include <map>
+#include <memory>
+#include <cmath>
+
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern int Golden_Chaos_Weapon_Index(const char *);
+
+namespace {
+template<class T> std::unique_ptr<T> Copy_Golden_Definition(const T * source)
+{
+	// SafeDataClass deliberately forbids copy construction. Its legacy
+	// non-const assignment copies the value into newly allocated safe storage.
+	auto copy = std::make_unique<T>();
+	*copy = const_cast<T &>(*source);
+	return copy;
+}
+
+struct GoldenWeaponDefinition {
+	const WeaponDefinitionClass * Original;
+	std::unique_ptr<WeaponDefinitionClass> Private;
+	std::unique_ptr<AmmoDefinitionClass> Primary;
+	std::unique_ptr<AmmoDefinitionClass> Secondary;
+	int Clip;
+	int Inventory;
+};
+std::map<WeaponClass *, GoldenWeaponDefinition> GoldenWeaponDefinitions;
+
+bool Golden_Sniper(WeaponClass * weapon)
+{
+	return Golden_Chaos_Player(weapon->Get_Owner()) && Golden_Chaos_Weapon_Index(weapon->Get_Name()) == 4;
+}
+}
+
+void Restore_Inactive_Golden_Chaos_Weapons()
+{
+	for (auto it = GoldenWeaponDefinitions.begin(); it != GoldenWeaponDefinitions.end();) {
+		WeaponClass * weapon = (it++)->first;
+		if (!Golden_Chaos_Player(weapon->Get_Owner())) weapon->Set_Owner(weapon->Get_Owner());
+	}
+}
+
+// This engine has no separate TargetingRange member: the camera and reticle
+// both use Get_Range(). Cover the whole scene with a finite ray instead of
+// sending infinity/FLT_MAX through collision math. Projectiles use this too.
+float Golden_Chaos_Ammo_Range(ArmedGameObj * owner, const AmmoDefinitionClass * ammo, const Vector3 & origin)
+{
+	const float normal = ammo ? static_cast<float>(ammo->Range) : 0.0f;
+	if (!ammo || !Golden_Chaos_Player(owner) || !COMBAT_SCENE) return normal;
+	// Match only the repair gun or the player's sniper ammunition.
+	// The owner check above prevents this override from affecting NPCs or multiplayer.
+	const WeaponDefinitionClass * repair = WeaponManager::Find_Weapon_Definition("CnC_Weapon_RepairGun_Player_Special");
+	const WeaponDefinitionClass * sniper = WeaponManager::Find_Weapon_Definition("Weapon_SniperRifle_Player");
+	const int ammo_id = ammo->Get_ID();
+	const bool repair_ammo = repair &&
+		(ammo_id == repair->PrimaryAmmoDefID || ammo_id == repair->SecondaryAmmoDefID);
+	const bool sniper_ammo = sniper &&
+		(ammo_id == sniper->PrimaryAmmoDefID || ammo_id == sniper->SecondaryAmmoDefID);
+	if (!repair_ammo && !sniper_ammo) return normal;
+	Vector3 minimum, maximum;
+	COMBAT_SCENE->Get_Level_Extents(minimum, maximum);
+	if (!minimum.Is_Valid() || !maximum.Is_Valid() || !origin.Is_Valid()) return normal;
+	double squared = 0.0;
+	for (int axis = 0; axis < 3; ++axis) {
+		const double distance = std::max(std::abs(double(minimum[axis]) - origin[axis]),
+			std::abs(double(maximum[axis]) - origin[axis]));
+		squared += distance * distance;
+	}
+	// Account for movable objects outside the static world bounds as well.
+	for (auto node = GameObjManager::Get_Game_Obj_List()->Head(); node; node = node->Next()) {
+		PhysicalGameObj * object = node->Data()->As_PhysicalGameObj();
+		if (object && object->Peek_Model()) {
+			const SphereClass & sphere = object->Peek_Model()->Get_Bounding_Sphere();
+			const double distance = (sphere.Center - origin).Length() + sphere.Radius;
+			squared = std::max(squared, distance * distance);
+		}
+	}
+	const float range = static_cast<float>(std::sqrt(squared) + 16.0);
+	return std::isfinite(range) ? std::max(range, normal) : normal;
+}
 
 
 /*
@@ -165,10 +244,16 @@ WeaponClass::~WeaponClass( void )
 	REF_PTR_RELEASE( FiringSound );
 
 	Do_Continuous_Effects( false );
+	GoldenWeaponDefinitions.erase(this);
 }
 
 void	WeaponClass::Init( const WeaponDefinitionClass *weapon_def )
 {
+	// Inventory transfers may pass another weapon's private definition.
+	// Never borrow that copy: it dies with the source weapon.
+	for (const auto & entry : GoldenWeaponDefinitions) {
+		if (entry.second.Private.get() == weapon_def) { weapon_def = entry.second.Original; break; }
+	}
 	WWASSERT( Definition == nullptr );
 	Definition = weapon_def;
 	WWASSERT( Definition != nullptr );
@@ -379,6 +464,55 @@ bool	WeaponClass::Load( ChunkLoadClass &cload )
 void	WeaponClass::Set_Owner( ArmedGameObj *owner )
 {
 	Owner = owner;
+	auto existing = GoldenWeaponDefinitions.find(this);
+	const int index = Definition ? Golden_Chaos_Weapon_Index(Definition->Get_Name()) : -1;
+	if (!Golden_Chaos_Player(owner) || index < 0) {
+		if (existing != GoldenWeaponDefinitions.end()) {
+			Definition = existing->second.Original;
+			PrimaryAmmoDefinition = WeaponManager::Find_Ammo_Definition(Definition->PrimaryAmmoDefID);
+			SecondaryAmmoDefinition = WeaponManager::Find_Ammo_Definition(Definition->SecondaryAmmoDefID);
+			{
+				ClipRounds = existing->second.Clip < 0 ? (int)Definition->ClipSize : existing->second.Clip;
+				InventoryRounds = existing->second.Inventory < 0 ? (int)Definition->MaxInventoryRounds : existing->second.Inventory;
+			}
+			GoldenWeaponDefinitions.erase(existing);
+		}
+		return;
+	}
+#ifndef PARAM_EDITING_ON
+	if (existing == GoldenWeaponDefinitions.end()) {
+		GoldenWeaponDefinition copy { Definition, Copy_Golden_Definition(Definition), nullptr, nullptr, ClipRounds, InventoryRounds };
+		static const float keys[] = { 0, 7, 8, 9, 3 };
+		copy.Private->KeyNumber = keys[index];
+		copy.Private->MaxInventoryRounds = -1;
+		if (index != 0) copy.Private->ClipSize = index == 4 ? 4 : 1;
+		if (index == 0 || index == 4) {
+			if (PrimaryAmmoDefinition) copy.Primary = Copy_Golden_Definition(PrimaryAmmoDefinition);
+			if (SecondaryAmmoDefinition) copy.Secondary = Copy_Golden_Definition(SecondaryAmmoDefinition);
+			if (index == 4) {
+				if (copy.Primary) copy.Primary->SprayBulletCost = 0;
+				if (copy.Secondary) copy.Secondary->SprayBulletCost = 0;
+			}
+		}
+		Definition = copy.Private.get();
+		existing = GoldenWeaponDefinitions.emplace(this, std::move(copy)).first;
+		if (existing->second.Primary) PrimaryAmmoDefinition = existing->second.Primary.get();
+		if (existing->second.Secondary) SecondaryAmmoDefinition = existing->second.Secondary.get();
+		ClipRounds = index == 0 ? -1 : index == 4 ? 4 : std::min(std::max((int)ClipRounds, 0), 1);
+		InventoryRounds = -1;
+	}
+	if (index == 0) {
+		Vector3 origin;
+		owner->Get_Position(&origin);
+		for (AmmoDefinitionClass * ammo : { existing->second.Primary.get(), existing->second.Secondary.get() }) {
+			if (ammo) {
+				const float range = Golden_Chaos_Ammo_Range(owner, WeaponManager::Find_Ammo_Definition(ammo->Get_ID()), origin);
+				ammo->Range = range;
+				ammo->EffectiveRange = range;
+			}
+		}
+	}
+#endif
 }
 
 void	WeaponClass::Set_Target_Object( PhysicalGameObj * obj )
@@ -577,7 +711,17 @@ void	WeaponClass::Do_Reload( void )
 
 float	WeaponClass::Get_Range( void )
 {
-	return ( PrimaryAmmoDefinition != nullptr ) ? static_cast<float>(PrimaryAmmoDefinition->Range) : 0.0f;
+	Set_Owner(Get_Owner());
+	if (PrimaryAmmoDefinition == nullptr) return 0.0f;
+
+	// Use the same finite level-extents range for camera targeting and
+	// muzzle traces that bullet.cpp uses for actual projectile travel.
+	if (Golden_Sniper(this) && Get_Owner() != nullptr) {
+		Vector3 origin;
+		Get_Owner()->Get_Position(&origin);
+		return Golden_Chaos_Ammo_Range(Get_Owner(), PrimaryAmmoDefinition, origin);
+	}
+	return static_cast<float>(PrimaryAmmoDefinition->Range);
 }
 
 
@@ -684,7 +828,7 @@ void	WeaponClass::Do_Fire( bool primary )
 //			WWASSERT( BurstCount != 0 );
 			BurstCount--;
 //			WWASSERT( ClipRounds != 0 );
-			Decrement_Rounds( ammo_def->SprayBulletCost );
+			Decrement_Rounds( Golden_Sniper(this) ? 0 : ammo_def->SprayBulletCost );
 		}
 
 	} else {
@@ -695,7 +839,9 @@ void	WeaponClass::Do_Fire( bool primary )
 //		WWASSERT( BurstCount != 0 );
 		BurstCount--;
 //		WWASSERT( ClipRounds != 0 );
-		Decrement_Rounds( ammo_def->SprayBulletCost );
+		// A zero cost means free shots; Fire_Bullet still uses the original
+		// SprayCount, damage, and rate. Do not use the cost as a fire predicate.
+		Decrement_Rounds( Golden_Sniper(this) ? 0 : ammo_def->SprayBulletCost );
 
 		if ( Get_Style() == WEAPON_HOLD_STYLE_C4 ) {
 			if ( CombatManager::I_Am_Server() ) {	// Only on servers
@@ -865,7 +1011,13 @@ void	WeaponClass::Fire_Bullet( const AmmoDefinitionClass *ammo_def, bool primary
 		}
 
 		// Create a bullet
-		BulletManager::Create_Bullet( ammo_def, position, velocity, bullet_owner, bump_time, bullet_target, target_obj );
+		// Bullets can outlive this weapon. They borrow the database definition,
+		// never our private ammo copy; range is resolved in the bullet path.
+		const AmmoDefinitionClass * bullet_ammo = ammo_def;
+		if (GoldenWeaponDefinitions.find(this) != GoldenWeaponDefinitions.end()) {
+			bullet_ammo = WeaponManager::Find_Ammo_Definition(ammo_def->Get_ID());
+		}
+		BulletManager::Create_Bullet( bullet_ammo, position, velocity, bullet_owner, bump_time, bullet_target, target_obj );
 	}
 
 	if ( ammo_def->DisplayLaser ) {
@@ -1377,6 +1529,10 @@ void	WeaponClass::Set_State( WeaponStateType new_state )
 
 void	WeaponClass::Update_State( float pending_time )
 {
+	if (Golden_Sniper(this)) {
+		ClipRounds = 4;
+		if (State == STATE_RELOAD) Set_State(STATE_READY);
+	}
 	LockTriggers = false;		// Unlock triggers
 
 	WWPROFILE( "Update weapon state" );
@@ -1527,6 +1683,7 @@ void	WeaponClass::Force_Reload( void )
 */
 void	WeaponClass::Update( void )
 {
+	Set_Owner(Get_Owner());
 	// Remove player weapons from vehicle drivers
 	if (	Get_Owner() &&
 			Get_Owner()->As_SoldierGameObj() &&
@@ -1686,6 +1843,7 @@ PhysicalGameObj * WeaponClass::Cast_Weapon( const Vector3 & target )
 bool
 WeaponClass::Is_Reload_OK( void )
 {
+	if (Golden_Sniper(this)) return false;
 	bool retval = (InventoryRounds != 0);
 
 	//

@@ -64,6 +64,9 @@ typedef enum {
 int		cGod::State		= GOD_STATE_UNINITIALIZED;
 InventoryClass	cGod::LevelStartInventory;
 
+extern void Capture_Golden_Chaos_Loadout(SoldierGameObj *);
+extern void Reset_Golden_Chaos_Loadout();
+
 //-----------------------------------------------------------------------------
 enum	{
 	CHUNKID_VARIABLES = 112374,
@@ -476,6 +479,7 @@ void cGod::Exit( void )
 
 void cGod::Star_Killed( void )
 {
+	Capture_Golden_Chaos_Loadout(COMBAT_STAR);
 	if ( State == GOD_STATE_SINGLE_RUNNING ) {
 		State = GOD_STATE_SINGLE_DEAD;
 		WWDEBUG_SAY(( "Star Killed\n" ));
@@ -566,6 +570,7 @@ void cGod::Mission_Failed( void )
 
 void cGod::Store_Inventory( SoldierGameObj * soldier )
 {
+	Capture_Golden_Chaos_Loadout(soldier);
 	LevelStartInventory.Store_Inventory( soldier );
 	EncyclopediaMgrClass::Store_Data();
 	return ;
@@ -580,6 +585,7 @@ void cGod::Restore_Inventory( SoldierGameObj * soldier )
 
 void cGod::Reset_Inventory( void )
 {
+	Reset_Golden_Chaos_Loadout();
 	LevelStartInventory.Reset();
 }
 

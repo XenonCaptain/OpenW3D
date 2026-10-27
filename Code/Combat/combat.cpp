@@ -206,6 +206,12 @@ void	CombatManager::Init( bool render_available )
 **
 */
 extern void Reset_Local_Player_Yellow();
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern void Capture_Golden_Chaos_Loadout(SoldierGameObj *);
+extern void Reset_Golden_Chaos_Loadout();
+extern void Save_Golden_Chaos_Loadout(ChunkSaveClass &);
+extern bool Load_Golden_Chaos_Loadout(ChunkLoadClass &);
+extern void Restore_Inactive_Golden_Chaos_Weapons();
 
 void	CombatManager::Shutdown( void )
 {
@@ -530,6 +536,7 @@ void	CombatManager::Post_Load_Level( void )
 
 void	CombatManager::Unload_Level( void )
 {
+	Capture_Golden_Chaos_Loadout(COMBAT_STAR);
 	Reset_Local_Player_Yellow();
 	// Display please wait screen.....
 	Render2DSentenceClass backdropText;
@@ -809,6 +816,7 @@ enum	{
 	CHUNKID_NOT_FIRST_LOAD,				// Delete this one, ( and change default to false )
 	CHUNKID_VARIABLES,
 	CHUNKID_CCAMERA,
+	CHUNKID_GOLDEN_CHAOS,
 
 	MICROCHUNKID_FIRST_LOAD					=	1,
 	MICROCHUNKID_DIFFICULTY_LEVEL			=	2,
@@ -822,6 +830,11 @@ enum	{
 
 bool	CombatManager::Save( ChunkSaveClass &csave )
 {
+	if (Golden_Chaos_Player(COMBAT_STAR)) {
+		csave.Begin_Chunk(CHUNKID_GOLDEN_CHAOS);
+		Save_Golden_Chaos_Loadout(csave);
+		csave.End_Chunk();
+	}
 	csave.Begin_Chunk( CHUNKID_THE_STAR );
 	TheStar.Save( csave );
 	csave.End_Chunk();
@@ -856,6 +869,7 @@ bool	CombatManager::Save( ChunkSaveClass &csave )
 
 bool	CombatManager::Load( ChunkLoadClass &cload )
 {
+	bool golden_loaded = false;
 	ReloadCount = 0;		// Legacy
 	IsFirstLoad = true;		// Default
 	int legacy_dificulty_level = DifficultyLevel;
@@ -867,6 +881,9 @@ bool	CombatManager::Load( ChunkLoadClass &cload )
 
 			case CHUNKID_THE_STAR:
 				TheStar.Load( cload );
+				break;
+			case CHUNKID_GOLDEN_CHAOS:
+				golden_loaded = Load_Golden_Chaos_Loadout(cload);
 				break;
 
 			case CHUNKID_VARIABLES:
@@ -908,6 +925,8 @@ bool	CombatManager::Load( ChunkLoadClass &cload )
 		ReloadCount = 0;
 		CheatMgrClass::Get_Instance()->Reset_History();
 	} else {
+		// Old saves must not inherit the previous session's carry record.
+		if (!golden_loaded) Reset_Golden_Chaos_Loadout();
 		ReloadCount++;		// Count another load!
 		CheatMgrClass::Get_Instance()->Set_History( cheat_history );
 		CheatMgrClass::Get_Instance()->Update_History();
@@ -1001,11 +1020,13 @@ void	CombatManager::Set_Camera_Profile( const char * profile_name )
 void 	CombatManager::Set_The_Star( SoldierGameObj *target, bool is_star_determining_target )
 {
 	if ( 	TheStar != target ) {
+		Capture_Golden_Chaos_Loadout(COMBAT_STAR);
 		Reset_Local_Player_Yellow();
 		HUDClass::Reset();	// Reset the HUD (clear damage and powerups)
 	}
 
 	TheStar = target;
+	Restore_Inactive_Golden_Chaos_Weapons();
 	IsStarDeterminingTarget = is_star_determining_target;
 	if ( target != nullptr ) {
 		COMBAT_CAMERA->Force_Heading( target->Get_Facing() );
@@ -1029,6 +1050,7 @@ void 	CombatManager::Set_The_Star( SoldierGameObj *target, bool is_star_determin
 */
 void CombatManager::Update_Star( void )
 {
+	Restore_Inactive_Golden_Chaos_Weapons();
 	SoldierGameObj * star = COMBAT_STAR;
 	if ( star == nullptr ) {
 		return;

@@ -60,6 +60,8 @@
 #include "simplegameobj.h"
 #include "c4.h"
 
+extern float Golden_Chaos_Ammo_Range(ArmedGameObj *, const AmmoDefinitionClass *, const Vector3 &);
+
 
 /*
 ** Constants for this module
@@ -579,7 +581,7 @@ void BulletClass::Init( const BulletDataClass & data, float progress_time, const
 
 	COMBAT_SCENE->Add_Dynamic_Object( Projectile );
 
-	float duration = (float) BulletData.AmmoDefinition->Range / (float) BulletData.AmmoDefinition->Velocity;
+	float duration = Golden_Chaos_Ammo_Range(BulletData.Get_Owner(), BulletData.AmmoDefinition, data.Position) / (float) BulletData.AmmoDefinition->Velocity;
 	if (duration <= 0.0) {
 		Debug_Say(( "NULL DURATION\n" ));
 	}
@@ -847,7 +849,7 @@ void	Simulate_Instant_Bullet( BulletDataClass & data, float /* progress_time */ 
 	Vector3	start = data.Position;
 	Vector3	end = data.Velocity;
 	end.Normalize();
-	end = start + (end * data.AmmoDefinition->Range);
+	end = start + (end * Golden_Chaos_Ammo_Range(data.Get_Owner(), data.AmmoDefinition, start));
 
 	// This is that last object we choose to ignore
 	PhysClass	*blocker = nullptr;
