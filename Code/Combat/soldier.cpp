@@ -540,7 +540,7 @@ SoldierGameObj::~SoldierGameObj()
 	}
 
 	if (Vehicle != nullptr) {
-      // Remove myself from the vehicle !
+	  // Remove myself from the vehicle !
 		Vehicle->Remove_Occupant(this);
 	}
 
@@ -1186,7 +1186,7 @@ void	SoldierGameObj::Import_Occasional( BitStreamClass &packet )
 #if 0 // (gth) moving back to "Frequent" to fix the game, re-optimize later?
 	bool has_weapon = packet.Get(has_weapon);
    if (has_weapon) {
-      WWASSERT(!packet.Is_Flushed());
+	  WWASSERT(!packet.Is_Flushed());
 
 		int weapon_id = packet.Get(weapon_id);
 		int rounds = packet.Get(rounds);
@@ -1294,7 +1294,7 @@ void SoldierGameObj::Export_Frequent(BitStreamClass & packet)
 	if ((Get_State() == HumanStateClass::TRANSITION) ||
 		 (Get_State() == HumanStateClass::ANIMATION) ||
 		 (Get_State() == HumanStateClass::IN_VEHICLE)) {
-      packet.Add_Terminated_String(AnimationName);
+	  packet.Add_Terminated_String(AnimationName);
 //		Debug_Say(( "In Transition %s\n", TransitionName ));
 	}
 
@@ -1331,7 +1331,7 @@ void	SoldierGameObj::Import_Frequent( BitStreamClass & packet )
 	//
 	bool has_weapon = packet.Get(has_weapon);
    if (has_weapon) {
-      WWASSERT(!packet.Is_Flushed());
+	  WWASSERT(!packet.Is_Flushed());
 
 		int weapon_id = packet.Get(weapon_id);
 		int rounds = packet.Get(rounds);
@@ -1399,14 +1399,14 @@ void	SoldierGameObj::Import_Frequent( BitStreamClass & packet )
 	}
 
 	if (HumanState.Is_Locked()) {
-      packet.Flush();
+	  packet.Flush();
 		return;
 	}
 
 #if 0
 	if ( Get_State() == HumanStateClass::TRANSITION ) {
 		Debug_Say(( "Ignoring Transitioning!\n" ));
-      packet.Flush();
+	  packet.Flush();
 		return;
 	}
 #endif
@@ -1415,7 +1415,7 @@ void	SoldierGameObj::Import_Frequent( BitStreamClass & packet )
 	if ( ( state == HumanStateClass::TRANSITION ) ||
 		  ( state == HumanStateClass::ANIMATION ) ||
 		  ( state == HumanStateClass::IN_VEHICLE ) ) {
-      packet.Get_Terminated_String(trans_name, sizeof(trans_name));
+	  packet.Get_Terminated_String(trans_name, sizeof(trans_name));
 	}
 
 	Interpret_Sc_State_Data(state, sub_state, trans_name, velocity, sc_position);
@@ -1431,7 +1431,7 @@ void	SoldierGameObj::Import_Frequent( BitStreamClass & packet )
 	}
 
    if (Get_State() == HumanStateClass::DIVE)	{
-      packet.Flush();
+	  packet.Flush();
 	} else {
 		SmartGameObj::Import_Frequent(packet);
 	}
@@ -2430,6 +2430,12 @@ static const char * _profile_name = "Soldier Think";
 void	SoldierGameObj::Think( void )
 {
 	Update_Golden_Chaos_Loadout(this);
+	if (Local_Player_Yellow_Owner_Allowed(this)) {
+		if (Get_Defense_Object()) {
+			Get_Defense_Object()->Set_Health(Get_Defense_Object()->Get_Health_Max());
+			Get_Defense_Object()->Set_Shield_Strength(Get_Defense_Object()->Get_Shield_Strength_Max());
+		}
+	}
 	if (this == COMBAT_STAR || YellowBody.Owner == this) {
 		YellowBody.Update(this, Peek_Model(), WeaponRenderModel, BackWeaponRenderModel, BackFlagRenderModel);
 	}
@@ -3723,6 +3729,9 @@ void	SoldierGameObj::Stop_Current_Speech( void )
 //------------------------------------------------------------------------------------
 void	SoldierGameObj::Apply_Damage( const OffenseObjectClass & damager, float scale, int alternate_skin )
 {
+	if (Local_Player_Yellow_Owner_Allowed(this)) {
+		return; // Don't allow the player to damage the combat star in single player
+	}
 	if ( !Is_In_Vehicle() ) {
 		SmartGameObj::Apply_Damage( damager, scale, alternate_skin );
 	}
@@ -3732,6 +3741,8 @@ void	SoldierGameObj::Apply_Damage( const OffenseObjectClass & damager, float sca
 void	SoldierGameObj::Apply_Damage_Extended( const OffenseObjectClass & damager, float scale,
 			const	Vector3 & direction, const char * collision_box_name )
 {
+	if (Local_Player_Yellow_Owner_Allowed(this))
+		return; // Don't allow the player to damage the combat star in single player
 	// If negative damage, just apply
 	if ( Get_Defense_Object()->Is_Repair( damager ) ) {
 //	if ( damager.Get_Damage() * scale < 0 ) {
@@ -5023,9 +5034,9 @@ void	SoldierGameObj::Think_Pathfind( void )
    // as soon as we find them out of the camera fulcrum.
    //
    if (CombatManager::I_Am_Only_Client() &&
-      Get_Control_Owner() != CombatManager::Get_My_Id()) {
+	  Get_Control_Owner() != CombatManager::Get_My_Id()) {
 
-      Vector3 current_position;
+	  Vector3 current_position;
 		Get_Position(&current_position);
 
 		ActionClass * p_action = Get_Action();
@@ -5040,7 +5051,7 @@ void	SoldierGameObj::Think_Pathfind( void )
 		// We can only pop if he is not presently in the camera fulcrum.
 		//
 		if (p_action->MovementAction != nullptr &&
-         !CombatManager::Is_In_Camera_Frustrum(from_position)) {
+		 !CombatManager::Is_In_Camera_Frustrum(from_position)) {
 
 			if (!CombatManager::Is_In_Camera_Frustrum(to_position)) {
 				//
@@ -5089,7 +5100,7 @@ void	SoldierGameObj::Think_Pathfind( void )
 
 				} while ((p_action->MovementAction != nullptr) && !is_finished);
 			}
-      }
+	  }
 	}
 }
 
@@ -5102,9 +5113,9 @@ void SoldierGameObj::Think_Pathfind(void)
 
    if ((CombatManager::Get_Client_Interpolation_Model() == CLIENT_INTERPOLATION_PATHFIND) &&
 		CombatManager::I_Am_Only_Client() &&
-      Get_Control_Owner() != CombatManager::Get_My_Id()) {
+	  Get_Control_Owner() != CombatManager::Get_My_Id()) {
 
-      Vector3 current_position;
+	  Vector3 current_position;
 		Get_Position(&current_position);
 
 		ActionClass * p_action = Get_Action();
@@ -5150,7 +5161,7 @@ void SoldierGameObj::Think_Pathfind(void)
 
 				Set_Position(last_pos);
 			}
-      }
+	  }
 	}
 }
 */
