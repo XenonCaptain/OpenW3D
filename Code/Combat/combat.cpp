@@ -205,8 +205,11 @@ void	CombatManager::Init( bool render_available )
 /*
 **
 */
+extern void Reset_Local_Player_Yellow();
+
 void	CombatManager::Shutdown( void )
 {
+	Reset_Local_Player_Yellow();
 //	Debug_Say(("CombatManager::Shutdown\n"));
 	ScreenFadeManager::Shutdown();
 	HUDClass::Shutdown();
@@ -527,6 +530,7 @@ void	CombatManager::Post_Load_Level( void )
 
 void	CombatManager::Unload_Level( void )
 {
+	Reset_Local_Player_Yellow();
 	// Display please wait screen.....
 	Render2DSentenceClass backdropText;
 	backdropText.Set_Texture_Size_Hint( 256 );
@@ -997,6 +1001,7 @@ void	CombatManager::Set_Camera_Profile( const char * profile_name )
 void 	CombatManager::Set_The_Star( SoldierGameObj *target, bool is_star_determining_target )
 {
 	if ( 	TheStar != target ) {
+		Reset_Local_Player_Yellow();
 		HUDClass::Reset();	// Reset the HUD (clear damage and powerups)
 	}
 

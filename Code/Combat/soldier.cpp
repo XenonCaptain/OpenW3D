@@ -100,6 +100,154 @@
 #include "realcrc.h"
 #include "colmathaabox.h" // Agressive inlining causes linker issues if this isn't here.
 #include <algorithm>
+#include <vector>
+#include "mesh.h"
+#ifndef PARAM_EDITING_ON
+#include "gamedata.h"
+#endif
+
+extern void Set_Local_Player_Yellow_Mesh(MeshClass *, bool);
+extern void Set_Local_Player_Yellow_Cleanup(void (*)(), bool (*)());
+void Reset_Local_Player_Yellow();
+static bool Local_Player_Yellow_Allowed();
+
+namespace {
+bool Local_Player_Yellow_Owner_Allowed(SoldierGameObj * owner)
+{
+#ifdef PARAM_EDITING_ON
+	// The editor links combate, but does not own a game session or The_Game().
+	return false;
+#else
+	return owner && owner == COMBAT_STAR && The_Game() && The_Game()->Is_Single_Player();
+#endif
+}
+
+// Match the authored character asset, rather than walking arbitrary attached
+// objects. Get_Sub_Object includes every HLOD level, including hidden LODs.
+bool Yellow_Excluded_Bone(RenderObjClass * parent, RenderObjClass * child)
+{
+	const int bone = parent->Get_Sub_Object_Bone_Index(child);
+	const char * name = bone >= 0 ? parent->Get_Bone_Name(bone) : nullptr;
+	return name && (!stricmp(name, "GUNBONE") || !stricmp(name, "BACKGUNBONE") ||
+		!stricmp(name, "CLIPBONE") || !stricmp(name, "MUZZLEA0") || !stricmp(name, "MUZZLEA1"));
+}
+
+struct YellowPlayerMeshes {
+	SoldierGameObj * Owner = nullptr; // Borrowed; cleared by the soldier destructor.
+	RenderObjClass * Root = nullptr;
+	RenderObjClass * Source = nullptr;
+	std::vector<MeshClass *> Meshes; // Each entry owns one reference.
+	std::vector<MeshClass *> Seen;   // Borrowed from Root during discovery.
+
+	void Clear()
+	{
+		for (MeshClass * mesh : Meshes) {
+			Set_Local_Player_Yellow_Mesh(mesh, false);
+			mesh->Release_Ref();
+		}
+		Meshes.clear();
+		Seen.clear();
+		std::vector<MeshClass *>().swap(Meshes);
+		std::vector<MeshClass *>().swap(Seen);
+		REF_PTR_RELEASE(Source);
+		REF_PTR_RELEASE(Root);
+		Owner = nullptr;
+	}
+
+	void Find(RenderObjClass * object, RenderObjClass * source,
+		RenderObjClass * weapon, RenderObjClass * back_weapon, RenderObjClass * other)
+	{
+		if (!object || !source || object == weapon || object == back_weapon || object == other ||
+			object->Class_ID() != source->Class_ID() || stricmp(object->Get_Name(), source->Get_Name())) return;
+		if (object->Class_ID() == RenderObjClass::CLASSID_MESH) {
+			MeshClass * mesh = static_cast<MeshClass *>(object);
+			if (std::find(Seen.begin(), Seen.end(), mesh) == Seen.end()) Seen.push_back(mesh);
+			return;
+		}
+		// Never descend into effect, projectile, particle, or other render types.
+		if (object->Class_ID() != RenderObjClass::CLASSID_HLOD &&
+			object->Class_ID() != RenderObjClass::CLASSID_HMODEL) return;
+		for (int i = 0; i < object->Get_Num_Sub_Objects(); ++i) {
+			RenderObjClass * child = object->Get_Sub_Object(i); // Get owns a reference.
+			if (child && !Yellow_Excluded_Bone(object, child)) {
+				for (int j = 0; j < source->Get_Num_Sub_Objects(); ++j) {
+					RenderObjClass * original = source->Get_Sub_Object(j);
+					if (original && !Yellow_Excluded_Bone(source, original) &&
+						object->Get_Sub_Object_Bone_Index(child) == source->Get_Sub_Object_Bone_Index(original) &&
+						child->Class_ID() == original->Class_ID() && !stricmp(child->Get_Name(), original->Get_Name())) {
+						Find(child, original, weapon, back_weapon, other);
+						original->Release_Ref();
+						break;
+					}
+					REF_PTR_RELEASE(original);
+				}
+			}
+			REF_PTR_RELEASE(child);
+		}
+	}
+
+	void Update(SoldierGameObj * owner, RenderObjClass * root,
+		RenderObjClass * weapon = nullptr, RenderObjClass * back_weapon = nullptr, RenderObjClass * other = nullptr)
+	{
+		if (!Local_Player_Yellow_Owner_Allowed(owner) || !root) {
+			Clear();
+			return;
+		}
+		if (Owner != owner || Root != root) {
+			Clear();
+			Owner = owner;
+			REF_PTR_SET(Root, root);
+			Source = WW3DAssetManager::Get_Instance()->Create_Render_Obj(root->Get_Name());
+		}
+		Set_Local_Player_Yellow_Cleanup(Reset_Local_Player_Yellow, Local_Player_Yellow_Allowed);
+		Seen.clear();
+		Find(Root, Source, weapon, back_weapon, other);
+		for (auto it = Meshes.begin(); it != Meshes.end();) {
+			if (std::find(Seen.begin(), Seen.end(), *it) == Seen.end()) {
+				Set_Local_Player_Yellow_Mesh(*it, false);
+				(*it)->Release_Ref();
+				it = Meshes.erase(it);
+			} else ++it;
+		}
+		for (MeshClass * mesh : Seen) {
+			if (std::find(Meshes.begin(), Meshes.end(), mesh) == Meshes.end()) {
+				Meshes.push_back(mesh);
+				mesh->Add_Ref();
+			}
+			Set_Local_Player_Yellow_Mesh(mesh, true);
+		}
+	}
+};
+
+YellowPlayerMeshes YellowBody;
+YellowPlayerMeshes YellowHands;
+}
+
+static bool Local_Player_Yellow_Allowed()
+{
+	return Local_Player_Yellow_Owner_Allowed(COMBAT_STAR) &&
+		(!YellowBody.Owner || YellowBody.Owner == COMBAT_STAR) &&
+		(!YellowHands.Owner || YellowHands.Owner == COMBAT_STAR);
+}
+
+void Reset_Local_Player_Yellow()
+{
+	Set_Local_Player_Yellow_Cleanup(nullptr, nullptr);
+	YellowHands.Clear();
+	YellowBody.Clear();
+}
+
+// Called exclusively for the separate model created by Aquire_Hands_Assets.
+void Update_Local_Player_Yellow_Hands(SoldierGameObj * owner, RenderObjClass * hands,
+	RenderObjClass * weapon, RenderObjClass * clip)
+{
+	YellowHands.Update(owner, hands, weapon, clip);
+}
+
+void Release_Local_Player_Yellow_Hands()
+{
+	YellowHands.Clear();
+}
 
 /*
 **
@@ -352,6 +500,8 @@ SoldierGameObj::SoldierGameObj() :
 //------------------------------------------------------------------------------------
 SoldierGameObj::~SoldierGameObj()
 {
+	if (YellowBody.Owner == this) YellowBody.Clear();
+	if (YellowHands.Owner == this) YellowHands.Clear();
 	if ( HealingEffect != nullptr ) {
 		Peek_Human_Phys()->Remove_Effect_From_Me( HealingEffect );
 		REF_PTR_RELEASE( HealingEffect );
@@ -498,6 +648,8 @@ void	SoldierGameObj::Prepare_Speech_Framework( void )
 
 void	SoldierGameObj::Re_Init( const SoldierGameObjDef & definition )
 {
+	if (YellowBody.Owner == this) YellowBody.Clear();
+	if (YellowHands.Owner == this) YellowHands.Clear();
 	if ( this == COMBAT_STAR ) {
 		HUDClass::Force_Weapon_Chart_Update();
 		WeaponViewClass::Reset();
@@ -2274,6 +2426,9 @@ static const char * _profile_name = "Soldier Think";
 //------------------------------------------------------------------------------------
 void	SoldierGameObj::Think( void )
 {
+	if (this == COMBAT_STAR || YellowBody.Owner == this) {
+		YellowBody.Update(this, Peek_Model(), WeaponRenderModel, BackWeaponRenderModel, BackFlagRenderModel);
+	}
 	{	WWPROFILENAMED( _profile_name, top );
 
 		if ( this == COMBAT_STAR ) {
@@ -4164,6 +4319,7 @@ bool	SoldierGameObj::Use_Ladder_View( void )
 //------------------------------------------------------------------------------------
 void SoldierGameObj::Set_Model(const char *model_name)
 {
+	if (YellowBody.Owner == this) YellowBody.Clear();
 	Peek_Physical_Object()->Set_Model_By_Name(model_name);
 	HumanState.Set_Anim_Control( (HumanAnimControlClass *)Get_Anim_Control() );  // Must set the anim control after the phys object
 }

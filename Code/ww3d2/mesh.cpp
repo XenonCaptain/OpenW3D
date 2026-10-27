@@ -121,6 +121,53 @@
 #include "dx8rendererdebugger.h"
 #include <stdio.h>
 #include <wwprofile.h>
+#include <map>
+
+namespace {
+// The mesh owns Model; this table owns the saved model reference. No asset
+// manager material, texture, or geometry buffer is ever edited by this effect.
+struct PlayerYellowModel {
+	MeshModelClass * Original = nullptr;
+	unsigned int * OriginalLighting = nullptr;
+	bool Enabled = true;
+};
+std::map<MeshClass *, PlayerYellowModel> PlayerYellowModels;
+void (*PlayerYellowCleanup)() = nullptr;
+bool (*PlayerYellowAllowed)() = nullptr;
+}
+
+void Set_Local_Player_Yellow_Cleanup(void (*cleanup)(), bool (*allowed)())
+{
+	PlayerYellowCleanup = cleanup;
+	PlayerYellowAllowed = allowed;
+}
+
+// Make_Unique performs the actual model exchange because it has access to the
+// mesh's renderer registration and model ownership. Keep this API in the .cpp
+// so the optional combat effect does not change the public rendering interface.
+void Set_Local_Player_Yellow_Mesh(MeshClass * mesh, bool enabled)
+{
+	if (!mesh || !mesh->Peek_Model()) return;
+	auto it = PlayerYellowModels.find(mesh);
+	if (it == PlayerYellowModels.end()) {
+		if (!enabled) return;
+		it = PlayerYellowModels.emplace(mesh, PlayerYellowModel()).first;
+	}
+	it->second.Enabled = enabled;
+	mesh->Make_Unique();
+}
+
+void Release_Local_Player_Yellow_Meshes()
+{
+	if (PlayerYellowCleanup) {
+		auto cleanup = PlayerYellowCleanup;
+		PlayerYellowCleanup = nullptr;
+		cleanup();
+	}
+	while (!PlayerYellowModels.empty()) {
+		Set_Local_Player_Yellow_Mesh(PlayerYellowModels.begin()->first, false);
+	}
+}
 
 static unsigned MeshDebugIdCount;
 
@@ -203,7 +250,8 @@ MeshClass::MeshClass(const MeshClass & that) :
 	MeshDebugId(MeshDebugIdCount++),
 	UserLighting(nullptr)
 {
-	REF_PTR_SET(Model,that.Model);					// mesh instances share models by default
+	auto yellow = PlayerYellowModels.find(const_cast<MeshClass *>(&that));
+	REF_PTR_SET(Model, yellow == PlayerYellowModels.end() ? that.Model : yellow->second.Original);
 }
 
 
@@ -222,12 +270,14 @@ MeshClass::MeshClass(const MeshClass & that) :
 MeshClass & MeshClass::operator = (const MeshClass & that)
 {
 	if (this != &that) {
+		Set_Local_Player_Yellow_Mesh(this, false);
 
 		TheDX8MeshRenderer.Unregister_Mesh_Type(this);
 
 		RenderObjClass::operator = (that);
 
-		REF_PTR_SET(Model,that.Model);				// mesh instances share models by default
+		auto yellow = PlayerYellowModels.find(const_cast<MeshClass *>(&that));
+		REF_PTR_SET(Model, yellow == PlayerYellowModels.end() ? that.Model : yellow->second.Original);
 		BaseVertexOffset = that.BaseVertexOffset;
 
 		// just dont copy the decals or light environment
@@ -298,6 +348,12 @@ bool MeshClass::Contains(const Vector3 &point)
  *=============================================================================================*/
 void MeshClass::Free(void)
 {
+	auto yellow = PlayerYellowModels.find(this);
+	if (yellow != PlayerYellowModels.end()) {
+		REF_PTR_RELEASE(yellow->second.Original);
+		delete[] yellow->second.OriginalLighting;
+		PlayerYellowModels.erase(yellow);
+	}
 	REF_PTR_RELEASE(Model);
 	REF_PTR_RELEASE(DecalMesh);
 	if (UserLighting != nullptr) {
@@ -685,6 +741,12 @@ int MeshClass::Get_Num_Polys(void) const
  *=============================================================================================*/
 void MeshClass::Render(RenderInfoClass & rinfo)
 {
+	// Also validate at draw time: a paused or disabled soldier may not Think
+	// between losing local-player status and its next render.
+	if (PlayerYellowModels.find(this) != PlayerYellowModels.end() &&
+		(!PlayerYellowAllowed || !PlayerYellowAllowed())) {
+		Release_Local_Player_Yellow_Meshes();
+	}
 	WWPROFILE("Mesh::Render");
 	if (Is_Not_Hidden_At_All() == false) {
 		return;
@@ -1055,6 +1117,63 @@ void MeshClass::Replace_VertexMaterial(VertexMaterialClass* vmat,VertexMaterialC
  *=============================================================================================*/
 void MeshClass::Make_Unique()
 {
+	auto yellow = PlayerYellowModels.find(this);
+	if (yellow != PlayerYellowModels.end()) {
+		PlayerYellowModel & state = yellow->second;
+		if (!state.Enabled) {
+			TheDX8MeshRenderer.Unregister_Mesh_Type(this);
+			REF_PTR_RELEASE(Model);
+			Model = state.Original; // Transfer the saved reference back to the mesh.
+			delete[] UserLighting;
+			UserLighting = state.OriginalLighting;
+			state.Original = nullptr;
+			PlayerYellowModels.erase(yellow);
+		} else if (!state.Original) {
+			MeshModelClass * model = NEW_REF(MeshModelClass, (*Model));
+			if (!model) {
+				PlayerYellowModels.erase(yellow);
+				return;
+			}
+			// Replace the entire private material description: single setters alone
+			// leave per-polygon material/shader arrays active. Reset both variants
+			// so no alternate texture, vertex color, or extra pass can bleed through.
+			model->DefMatDesc->Reset(model->Get_Polygon_Count(), model->Get_Vertex_Count(), 1);
+			delete model->AlternateMatDesc;
+			model->AlternateMatDesc = nullptr;
+			model->CurMatDesc = model->DefMatDesc;
+			model->MatInfo->Reset();
+			VertexMaterialClass * material = NEW_REF(VertexMaterialClass, ());
+			if (!material) {
+				model->Release_Ref();
+				PlayerYellowModels.erase(yellow);
+				return;
+			}
+			material->Set_Diffuse(1.0f, 1.0f, 0.0f);
+			material->Set_Ambient(1.0f, 1.0f, 0.0f);
+			material->Set_Emissive(1.0f, 1.0f, 0.0f);
+			material->Set_Specular(0.0f, 0.0f, 0.0f);
+			material->Set_Opacity(1.0f);
+			material->Set_Lighting(false);
+			material->Set_Diffuse_Color_Source(VertexMaterialClass::COLOR1);
+			model->MatInfo->Add_Vertex_Material(material);
+			model->Set_Single_Material(material);
+			material->Release_Ref();
+			// With fixed-function lighting disabled, D3D takes diffuse from the
+			// vertex stream, not the material. Allocate a new stream on the clone.
+			unsigned int * colors = model->Get_Color_Array(0, true);
+			for (int i = 0; i < model->Get_Vertex_Count(); ++i) colors[i] = 0xFFFFFF00;
+			model->CurMatDesc->Set_DCG_Source(0, VertexMaterialClass::COLOR1);
+			ShaderClass shader; // Opaque, depth-tested, untextured, no fog.
+			model->Set_Single_Shader(shader);
+			model->Set_Sort_Level(SORT_LEVEL_NONE);
+			TheDX8MeshRenderer.Unregister_Mesh_Type(this);
+			state.Original = Model; // Transfer, do not release this reference.
+			state.OriginalLighting = UserLighting;
+			UserLighting = nullptr;
+			Model = model;
+		}
+		return; // Repeated updates never clone a yellow mesh again.
+	}
 	if (Model->Num_Refs()==1) return;
 
 	MeshModelClass *newmesh=NEW_REF(MeshModelClass,(*Model));

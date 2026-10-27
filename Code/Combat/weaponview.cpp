@@ -51,6 +51,9 @@
 #include "stealtheffect.h"
 #include "animcontrol.h"
 
+extern void Update_Local_Player_Yellow_Hands(SoldierGameObj *, RenderObjClass *, RenderObjClass *, RenderObjClass *);
+extern void Release_Local_Player_Yellow_Hands();
+
 
 /*
 **
@@ -227,6 +230,8 @@ void 	WeaponViewClass::Enable( bool enable )
 */
 void 	WeaponViewClass::Think()
 {
+	Update_Local_Player_Yellow_Hands(COMBAT_STAR,
+		HandsPhysObj ? HandsPhysObj->Peek_Model() : nullptr, WeaponModel, ClipModel);
 	WWPROFILENAMED( "WeaponView Think", top );
 
 	bool bail = false;
@@ -787,6 +792,7 @@ static void	Aquire_Hands_Assets( void )
 			HandAnimControl.Set_Model( model );
 			HandAnimControl.Set_Animation( (HAnimClass*)nullptr );
 			HandsPhysObj->Set_Model( model );
+			Update_Local_Player_Yellow_Hands(COMBAT_STAR, model, nullptr, nullptr);
 			model->Release_Ref();
 		}
 	}
@@ -794,6 +800,7 @@ static void	Aquire_Hands_Assets( void )
 
 static void	Release_Hands_Assets( void )
 {
+	Release_Local_Player_Yellow_Hands();
 	HandAnimControl.Set_Model( nullptr );
 	HandAnimControl.Set_Animation( (HAnimClass*)nullptr );
 

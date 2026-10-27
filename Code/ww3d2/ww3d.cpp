@@ -339,8 +339,11 @@ WW3DErrorType WW3D::Init(void *hwnd, char * /*defaultpal*/, bool lite)
  * HISTORY:                                                                                    *
  *   3/24/98    GTH : Created.                                                                 *
  *=============================================================================================*/
+extern void Release_Local_Player_Yellow_Meshes();
+
 WW3DErrorType WW3D::Shutdown(void)
 {
+	Release_Local_Player_Yellow_Meshes();
 	assert(Lite || IsInitted == true);
 //	WWDEBUG_SAY(("WW3D::Shutdown\n"));
 
