@@ -59,8 +59,12 @@
 #include "timeddecophys.h"
 #include "simplegameobj.h"
 #include "c4.h"
+#include "weapons.h"
 
 extern float Golden_Chaos_Ammo_Range(ArmedGameObj *, const AmmoDefinitionClass *, const Vector3 &);
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern int Golden_Chaos_Weapon_Index(const char *);
+extern void Mark_Golden_Chaos_Sniper_Victim(DamageableGameObj *, ArmedGameObj *);
 
 
 /*
@@ -204,6 +208,17 @@ void BeamEffectManagerClass::Internal_Get_New_Beam(SegmentedLineClass ** set_bea
 }
 
 
+static bool Is_Player_Sniper_One_Shot(const ArmedGameObj * source, const AmmoDefinitionClass * ammo)
+{
+	// Capture the firing weapon now; switching weapons cannot upgrade another
+	// weapon's projectile while it is in flight.
+	ArmedGameObj * owner = const_cast<ArmedGameObj *>(source);
+	if (!Golden_Chaos_Player(owner) || !ammo) return false;
+	WeaponClass * weapon = owner->Get_Weapon();
+	if (!weapon || Golden_Chaos_Weapon_Index(weapon->Get_Name()) != 4) return false;
+	const WeaponDefinitionClass * definition = weapon->Get_Definition();
+	return ammo->Get_ID() == definition->PrimaryAmmoDefID || ammo->Get_ID() == definition->SecondaryAmmoDefID;
+}
 
 /*
 ** Core Bullet Data for simulation
@@ -220,7 +235,8 @@ public:
 		Destroy( false ),
 		DidExplode( false ),
 		LastHitID( 0 ),
-		GrenadeSafetyTimer( 0 )
+		GrenadeSafetyTimer( 0 ),
+		GoldenSniper( Is_Player_Sniper_One_Shot(owner, def) )
 	{}
 
 	ArmedGameObj * Get_Owner( void ) const 	{ return (ArmedGameObj *)Owner.Get_Ptr(); }
@@ -237,6 +253,7 @@ public:
 	bool							DidExplode;
 	int								LastHitID;
 	float							GrenadeSafetyTimer;
+	bool							GoldenSniper;
 };
 
 /*
@@ -356,6 +373,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 			// Apply Bullet Damage to a game object
 			// Allow it to happen for clients, so we can get the repair effect
 //			if ( CombatManager::I_Am_Server() ) {
+				if (GoldenSniper) Mark_Golden_Chaos_Sniper_Victim(other, Get_Owner());
 				other->Apply_Damage_Extended( offense, 1.0f, Velocity, collided_obj_name );
 
 				// If the bullet is hitting C4, also apply damage to the object the C4 is
@@ -363,6 +381,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 				if (other->As_C4GameObj() != nullptr) {
 					ScriptableGameObj * host = other->As_C4GameObj()->Get_Stuck_Object();
 					if ((host != nullptr) && (host->As_PhysicalGameObj() != nullptr)) {
+						if (GoldenSniper) Mark_Golden_Chaos_Sniper_Victim(host->As_PhysicalGameObj(), Get_Owner());
 						host->As_PhysicalGameObj()->Apply_Damage_Extended( offense, 1.0f, Velocity, nullptr );
 					}
 				}
@@ -390,6 +409,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 
 			// If hitting a building, apply damage to it
 			if ( building != nullptr ) { //	&& CombatManager::I_Am_Server() ) {
+				if (GoldenSniper) Mark_Golden_Chaos_Sniper_Victim(building, Get_Owner());
 				building->Apply_Damage_Building( offense, event.OtherObj->As_StaticPhysClass() );
 			}
 
@@ -524,6 +544,7 @@ void BulletClass::Init( const BulletDataClass & data, float progress_time, const
 	BulletData.LastHitID = 0;			// We haven't hit anyone yet.
 	BulletData.DidExplode = false;
 	BulletData.GrenadeSafetyTimer = data.GrenadeSafetyTimer;
+	BulletData.GoldenSniper = data.GoldenSniper;
 
 	if ( data.AmmoDefinition ) {
 		BulletData.GrenadeSafetyTimer = data.AmmoDefinition->GrenadeSafetyTime;
@@ -632,6 +653,7 @@ enum	{
 	MICROCHUNKID_TRACKING_ERROR_TIMER,
 	MICROCHUNKID_TRACKING_ERROR,
 	MICROCHUNKID_MODEL_NAME_CRC,
+	MICROCHUNKID_GOLDEN_SNIPER,
 };
 
 bool	BulletClass::Save( ChunkSaveClass & csave )
@@ -647,6 +669,7 @@ bool	BulletClass::Save( ChunkSaveClass & csave )
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_TRACKING_ERROR_TIMER, TrackingErrorTimer );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_TRACKING_ERROR, TrackingError );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_MODEL_NAME_CRC, ModelNameCRC );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_GOLDEN_SNIPER, BulletData.GoldenSniper );
 	csave.End_Chunk();
 
 	if ( BulletData.Get_Owner() != nullptr ) {
@@ -682,6 +705,7 @@ bool	BulletClass::Load( ChunkLoadClass & cload )
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_TRACKING_ERROR_TIMER, TrackingErrorTimer );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_TRACKING_ERROR, TrackingError );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_MODEL_NAME_CRC, ModelNameCRC );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_GOLDEN_SNIPER, BulletData.GoldenSniper );
 
 						default:
 							Debug_Say(("Unhandled Micro Chunk:%d File:%s Line:%d\r\n",cload.Cur_Micro_Chunk_ID(),__FILE__,__LINE__));

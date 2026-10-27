@@ -39,6 +39,31 @@
 #include "armedgameobj.h"
 #include "playertype.h"
 #include "colors.h"
+#include "combat.h"
+#include "soldier.h"
+#include <set>
+
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+
+namespace {
+// Object-owned lifetime: erased on destruction or character reinitialization.
+// Only sniper-hit enemies enter this set; no shared preset is changed.
+std::set<DamageableGameObj *> GoldenSniperVictims;
+}
+
+bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj * target)
+{
+	return target && Golden_Chaos_Player(COMBAT_STAR) && GoldenSniperVictims.count(target) != 0;
+}
+
+void Mark_Golden_Chaos_Sniper_Victim(DamageableGameObj * target, ArmedGameObj * shooter)
+{
+	if (target && Golden_Chaos_Player(shooter) && CombatManager::I_Am_Server() &&
+		target != shooter && target->Is_Enemy(shooter) &&
+		target->Get_Defense_Object()->Get_Health() > 0 && !target->Is_Delete_Pending()) {
+		GoldenSniperVictims.insert(target);
+	}
+}
 
 /*
 ** DamageableGameObjDef - Defintion class for a DamageableGameObj
@@ -168,6 +193,7 @@ DamageableGameObj::DamageableGameObj( void ) :
 DamageableGameObj::~DamageableGameObj( void )
 {
 	Remove_All_Observers();
+	GoldenSniperVictims.erase(this);
 }
 
 
@@ -187,6 +213,7 @@ void	DamageableGameObj::Init( const DamageableGameObjDef & definition )
 */
 void	DamageableGameObj::Copy_Settings( const DamageableGameObjDef & definition )
 {
+	GoldenSniperVictims.erase(this);
 	Set_Player_Type(definition.DefaultPlayerType);
 	DefenseObject.Init(definition.DefenseObjectDef, this );
 	return ;
@@ -240,10 +267,12 @@ enum	{
 
 	MICROCHUNKID_PLAYER_TYPE				=	1,
 	MICROCHUNKID_IS_HEALTH_BAR_DISPLAYED,
+	MICROCHUNKID_GOLDEN_SNIPER_VICTIM,
 };
 
 bool	DamageableGameObj::Save( ChunkSaveClass & csave )
 {
+	const bool golden_sniper_victim = Is_Golden_Chaos_Sniper_Victim(this);
 	csave.Begin_Chunk( CHUNKID_PARENT );
 		ScriptableGameObj::Save( csave );
 	csave.End_Chunk();
@@ -251,6 +280,9 @@ bool	DamageableGameObj::Save( ChunkSaveClass & csave )
 	csave.Begin_Chunk( CHUNKID_VARIABLES );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_PLAYER_TYPE, PlayerType );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_IS_HEALTH_BAR_DISPLAYED, IsHealthBarDisplayed );
+		if (golden_sniper_victim) {
+			WRITE_MICRO_CHUNK( csave, MICROCHUNKID_GOLDEN_SNIPER_VICTIM, golden_sniper_victim );
+		}
 	csave.End_Chunk();
 
 	csave.Begin_Chunk( CHUNKID_DEFENSEOBJECT );
@@ -262,6 +294,8 @@ bool	DamageableGameObj::Save( ChunkSaveClass & csave )
 
 bool	DamageableGameObj::Load( ChunkLoadClass &cload )
 {
+	bool golden_sniper_victim = false;
+	GoldenSniperVictims.erase(this);
 	while (cload.Open_Chunk()) {
 		switch(cload.Cur_Chunk_ID()) {
 
@@ -274,6 +308,7 @@ bool	DamageableGameObj::Load( ChunkLoadClass &cload )
 					switch(cload.Cur_Micro_Chunk_ID()) {
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_PLAYER_TYPE, PlayerType );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_IS_HEALTH_BAR_DISPLAYED, IsHealthBarDisplayed );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_GOLDEN_SNIPER_VICTIM, golden_sniper_victim );
 						default:
 							Debug_Say(( "Unhandled MicroChunk:%d File:%s Line:%d\r\n",cload.Cur_Micro_Chunk_ID(),__FILE__,__LINE__));
 							break;
@@ -295,6 +330,7 @@ bool	DamageableGameObj::Load( ChunkLoadClass &cload )
 		cload.Close_Chunk();
 	}
 
+	if (golden_sniper_victim) GoldenSniperVictims.insert(this);
 	return true;
 }
 

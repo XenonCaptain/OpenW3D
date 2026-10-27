@@ -59,6 +59,8 @@
 #include "csdamageevent.h"
 #include <algorithm>
 
+extern bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj *);
+
 #ifdef WWDEBUG
 bool	DefenseObjectClass::OneShotKills	= false;
 #endif // _WWDEBUG
@@ -784,6 +786,7 @@ void	DefenseObjectClass::Request_Damage( const OffenseObjectClass & offense, flo
 */
 float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float scale, int alternate_skin )
 {
+	const bool golden_sniper_kill = Is_Golden_Chaos_Sniper_Victim(Get_Owner());
 	SmartGameObj * smart = nullptr;
 
 	if ( offense.Get_Owner() != nullptr ) {
@@ -852,6 +855,12 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 
 
 	bool	is_repair = false;
+	if (golden_sniper_kill) {
+		// A real hostile sniper hit is lethal even through immune armor or
+		// script-controlled CanObjectDie. Keep the normal scoring/death path.
+		damage = std::max(static_cast<float>(Health), 1.0f);
+		damage_scale = shield_damage_scale = 1.0f;
+	}
 
 	// check for repair on either health of shield
 	// Note: humans don't repair health, but vehicles do.
@@ -926,6 +935,11 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 			damage = Health;
 		}
 
+		if (golden_sniper_kill) {
+			damage = (float)Health;
+			ShieldStrength = 0.0f;
+		}
+
 	#ifdef WWDEBUG
 		//
 		// TSS090601
@@ -940,8 +954,8 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 		//
 		//	Don't allow this object to die (if necessary)
 		//
-		if ( CanObjectDie == false ) {
-			Health = std::max ( (float)Health, 1.0F );
+		if (!golden_sniper_kill && CanObjectDie == false) {
+			Health = std::max((float)Health, 1.0F);
 		}
 	}
 
@@ -1059,6 +1073,7 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 
 bool DefenseObjectClass::Is_Repair( const OffenseObjectClass	& offense, float scale )
 {
+	if (Is_Golden_Chaos_Sniper_Victim(Get_Owner())) return false;
 	float damage = offense.Get_Damage() * scale;
 	float damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( Skin, offense.Get_Warhead() );
 	float shield_damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( ShieldType, offense.Get_Warhead() );
@@ -1252,6 +1267,9 @@ bool DefenseObjectDefClass::Load(ChunkLoadClass &cload)
 
 void DefenseObjectClass::Set_Health(float health)
 {
+	// Mission Damaged/Killed callbacks and delayed repair timers all use
+	// this setter. A finalized sniper kill cannot be healed back to life.
+	if (Is_Golden_Chaos_Sniper_Victim(Get_Owner())) health = 0.0f;
 	float old_health = Health;
 	Health = WWMath::Clamp(health, 0, HealthMax);
 	if ( old_health != (float)Health ) {
@@ -1284,6 +1302,7 @@ float DefenseObjectClass::Get_Health_Max(void) const
 
 void DefenseObjectClass::Set_Shield_Strength(float str)
 {
+	if (Is_Golden_Chaos_Sniper_Victim(Get_Owner())) str = 0.0f;
 	float old = ShieldStrength;
 	ShieldStrength = WWMath::Clamp(str, 0, ShieldStrengthMax);
 	if ( old != (float)ShieldStrength ) {
