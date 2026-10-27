@@ -212,6 +212,7 @@ extern void Reset_Golden_Chaos_Loadout();
 extern void Save_Golden_Chaos_Loadout(ChunkSaveClass &);
 extern bool Load_Golden_Chaos_Loadout(ChunkLoadClass &);
 extern void Restore_Inactive_Golden_Chaos_Weapons();
+extern void Update_Golden_Chaos_Movement(SoldierGameObj *);
 
 void	CombatManager::Shutdown( void )
 {
@@ -1026,6 +1027,7 @@ void 	CombatManager::Set_The_Star( SoldierGameObj *target, bool is_star_determin
 	}
 
 	TheStar = target;
+	Update_Golden_Chaos_Movement(target);
 	Restore_Inactive_Golden_Chaos_Weapons();
 	IsStarDeterminingTarget = is_star_determining_target;
 	if ( target != nullptr ) {
@@ -1050,6 +1052,7 @@ void 	CombatManager::Set_The_Star( SoldierGameObj *target, bool is_star_determin
 */
 void CombatManager::Update_Star( void )
 {
+	Update_Golden_Chaos_Movement(COMBAT_STAR);
 	Restore_Inactive_Golden_Chaos_Weapons();
 	SoldierGameObj * star = COMBAT_STAR;
 	if ( star == nullptr ) {

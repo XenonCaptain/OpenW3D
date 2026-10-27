@@ -101,6 +101,8 @@
 #include "colmathaabox.h" // Agressive inlining causes linker issues if this isn't here.
 #include <algorithm>
 #include <vector>
+#include <map>
+#include <cmath>
 #include "mesh.h"
 #ifndef PARAM_EDITING_ON
 #include "gamedata.h"
@@ -111,7 +113,57 @@ extern void Set_Local_Player_Yellow_Cleanup(void (*)(), bool (*)());
 void Reset_Local_Player_Yellow();
 extern void Update_Golden_Chaos_Loadout(SoldierGameObj *);
 extern void Capture_Golden_Chaos_Loadout(SoldierGameObj *);
+extern bool Golden_Chaos_Player(ArmedGameObj *);
 static bool Local_Player_Yellow_Allowed();
+
+namespace {
+struct GoldenMovementState {
+	HumanPhysClass * Physics = nullptr; // Owned reference, including during replacement.
+	float OriginalSpeed = 0.0f;
+};
+std::map<SoldierGameObj *, GoldenMovementState> GoldenMovement;
+
+void Restore_Golden_Movement(SoldierGameObj * soldier)
+{
+	auto entry = GoldenMovement.find(soldier);
+	if (entry == GoldenMovement.end()) return;
+	HumanPhysClass * physics = entry->second.Physics;
+	if (physics) {
+		physics->Set_Normalized_Speed(entry->second.OriginalSpeed);
+		physics->Release_Ref();
+	}
+	GoldenMovement.erase(entry);
+}
+}
+
+void Update_Golden_Chaos_Movement(SoldierGameObj * soldier)
+{
+	for (auto entry = GoldenMovement.begin(); entry != GoldenMovement.end();) {
+		auto current = entry++;
+		SoldierGameObj * owner = current->first;
+		auto & state = current->second;
+		// Updates run after loading has remapped physics references. Destruction
+		// during a failed load never dereferences a pending, unremapped pointer.
+		if (!state.Physics && owner->Peek_Human_Phys()) {
+			state.Physics = owner->Peek_Human_Phys();
+			state.Physics->Add_Ref();
+		}
+		if (!Golden_Chaos_Player(owner) ||
+			(state.Physics && state.Physics != owner->Peek_Human_Phys())) Restore_Golden_Movement(owner);
+	}
+	if (!Golden_Chaos_Player(soldier)) return;
+	HumanPhysClass * physics = soldier->Peek_Human_Phys();
+	if (!physics) return;
+	auto entry = GoldenMovement.find(soldier);
+	if (entry == GoldenMovement.end()) {
+		entry = GoldenMovement.emplace(soldier, GoldenMovementState{ nullptr, physics->Get_Normalized_Speed() }).first;
+	}
+	if (!entry->second.Physics) {
+		physics->Add_Ref();
+		entry->second.Physics = physics;
+	}
+	physics->Set_Normalized_Speed(18.0f);
+}
 
 namespace {
 bool Local_Player_Yellow_Owner_Allowed(SoldierGameObj * owner)
@@ -502,6 +554,7 @@ SoldierGameObj::SoldierGameObj() :
 //------------------------------------------------------------------------------------
 SoldierGameObj::~SoldierGameObj()
 {
+	Restore_Golden_Movement(this);
 	if (YellowBody.Owner == this) YellowBody.Clear();
 	if (YellowHands.Owner == this) YellowHands.Clear();
 	if ( HealingEffect != nullptr ) {
@@ -650,6 +703,7 @@ void	SoldierGameObj::Prepare_Speech_Framework( void )
 
 void	SoldierGameObj::Re_Init( const SoldierGameObjDef & definition )
 {
+	Restore_Golden_Movement(this);
 	Capture_Golden_Chaos_Loadout(this);
 	if (YellowBody.Owner == this) YellowBody.Clear();
 	if (YellowHands.Owner == this) YellowHands.Clear();
@@ -776,7 +830,8 @@ enum	{
 	MICROCHUNKID_WEAPON_MODEL,
 	MICROCHUNKID_SPECIAL_DAMAGE_MODE,
 	MICROCHUNKID_SPECIAL_DAMAGE_TIMER,
-	MICROCHUNKID_IS_USING_GHOST_COLLISION
+	MICROCHUNKID_IS_USING_GHOST_COLLISION,
+	MICROCHUNKID_GOLDEN_ORIGINAL_SPEED
 };
 
 //------------------------------------------------------------------------------------
@@ -823,6 +878,10 @@ bool	SoldierGameObj::Save( ChunkSaveClass & csave )
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_AI_STATE, AIState );
 		WRITE_MICRO_CHUNK_PTR( csave, MICROCHUNKID_WEAPON_MODEL, WeaponRenderModel );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_IS_USING_GHOST_COLLISION, IsUsingGhostCollision );
+		auto movement = GoldenMovement.find(this);
+		if (movement != GoldenMovement.end()) {
+			WRITE_MICRO_CHUNK( csave, MICROCHUNKID_GOLDEN_ORIGINAL_SPEED, movement->second.OriginalSpeed );
+		}
 
 	csave.End_Chunk();
 
@@ -862,6 +921,8 @@ bool	SoldierGameObj::Save( ChunkSaveClass & csave )
 //------------------------------------------------------------------------------------
 bool	SoldierGameObj::Load( ChunkLoadClass &cload )
 {
+	Restore_Golden_Movement(this);
+	float golden_original_speed = -1.0f;
 	char anim_string[80];
 	int dialog_index = 0;
 
@@ -915,6 +976,7 @@ bool	SoldierGameObj::Load( ChunkLoadClass &cload )
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_AI_STATE, AIState );
 						READ_MICRO_CHUNK_PTR( cload, MICROCHUNKID_WEAPON_MODEL, WeaponRenderModel );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_IS_USING_GHOST_COLLISION, IsUsingGhostCollision );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_GOLDEN_ORIGINAL_SPEED, golden_original_speed );
 
 						default:
 							Debug_Say(( "Unrecognized Soldier Variable chunkID\n" ));
@@ -973,6 +1035,9 @@ bool	SoldierGameObj::Load( ChunkLoadClass &cload )
 	}
 
 
+	if (std::isfinite(golden_original_speed) && golden_original_speed >= 0.0f) {
+		GoldenMovement.emplace(this, GoldenMovementState{ nullptr, golden_original_speed });
+	}
 	SaveLoadSystemClass::Register_Post_Load_Callback(this);
 
 	return true;
@@ -1753,6 +1818,7 @@ void	SoldierGameObj::Generate_Control( void )
 //------------------------------------------------------------------------------------
 void SoldierGameObj::Apply_Control( void )
 {
+	Update_Golden_Chaos_Movement(this);
 	// if gameplay not permitted, skip
 	if ( !CombatManager::Is_Gameplay_Permitted() ) {
 		Clear_Control();
@@ -2024,7 +2090,7 @@ void SoldierGameObj::Apply_Control( void )
 	// Have to Move_Up after after Apply control, but BOOLEAN_JUMP is cleared
 	if ( Control.Get_Boolean( ControlClass::BOOLEAN_JUMP ) ) {
 		if ( Get_State() != HumanStateClass::AIRBORNE ) {
-			Controller.Set_Move_Up( Get_Definition().JumpVelocity );
+			Controller.Set_Move_Up( Golden_Chaos_Player(this) ? 15.0f : Get_Definition().JumpVelocity );
 		}
 
 		if ( this == COMBAT_STAR ) {
@@ -2054,7 +2120,7 @@ void SoldierGameObj::Apply_Control( void )
 	if ( jump_timer > 0 ) {
 		jump_timer -= TimeManager::Get_Frame_Seconds();
 		if ( jump_timer <= 0 ) {
-			Controller.Set_Move_Up( Get_Definition().JumpVelocity );
+			Controller.Set_Move_Up( Golden_Chaos_Player(this) ? 15.0f : Get_Definition().JumpVelocity );
 		}
 	}
 
@@ -2199,7 +2265,7 @@ void SoldierGameObj::Apply_Control( void )
 	// Override the following controls
 	if ( IS_SOLOPLAY && Is_Human_Controlled() && Input::Get_State( INPUT_FUNCTION_DEBUG_RAPID_MOVE ) ) {
 		if ( Control.Get_Boolean( ControlClass::BOOLEAN_JUMP ) ) {
-			Controller.Set_Move_Up( Get_Definition().JumpVelocity );
+			Controller.Set_Move_Up( Golden_Chaos_Player(this) ? 15.0f : Get_Definition().JumpVelocity );
 		}
 	}
 
@@ -2429,6 +2495,7 @@ static const char * _profile_name = "Soldier Think";
 //------------------------------------------------------------------------------------
 void	SoldierGameObj::Think( void )
 {
+	Update_Golden_Chaos_Movement(this);
 	Update_Golden_Chaos_Loadout(this);
 	if (Local_Player_Yellow_Owner_Allowed(this)) {
 		if (Get_Defense_Object()) {
