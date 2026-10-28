@@ -96,8 +96,8 @@
 static void _reload_game_configuration_files(void);
 
 // Defines.
-#define PRE_SERVICE_TIME	1500 // Time in milliseconds.
-#define POST_SERVICE_TIME	 250 // Time in milliseconds.
+#define PRE_SERVICE_TIME	0 // Time in milliseconds.
+#define POST_SERVICE_TIME	0 // Time in milliseconds.
 
 
 ////////////////////////////////////////////////////////////////
