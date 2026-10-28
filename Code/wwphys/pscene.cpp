@@ -1123,7 +1123,8 @@ void PhysicsSceneClass::Pre_Render_Processing(CameraClass & camera)
 	// Collect the visible objects
 	bool use_umbra = false;
 #if (UMBRASUPPORT)
-	use_umbra = UmbraSupport::Is_Umbra_Enabled();
+	// Disabling VIS must also bypass the optional occlusion backend.
+	use_umbra = Is_Vis_Enabled() && UmbraSupport::Is_Umbra_Enabled();
 #endif
 
 	if (!use_umbra) {

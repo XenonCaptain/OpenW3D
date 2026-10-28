@@ -3300,6 +3300,41 @@ public:
 
 #endif // WWDEBUG, development only commands
 
+class VisControlConsoleFunctionClass : public ConsoleFunctionClass
+{
+public:
+	virtual const char * Get_Name(void) override { return "vis"; }
+	virtual const char * Get_Help(void) override {
+		return "VIS - Toggle VIS.";
+	}
+	virtual void Activate(const char * input) override {
+		const char * argument = input ? input : "";
+		argument += strspn(argument, " \t\r\n");
+		const bool toggle = *argument == '\0';
+		bool enabled = false;
+		if (!toggle) {
+			if (*argument != '0' && *argument != '1') {
+				Print("Usage: vis <0/1>\n");
+				return;
+			}
+			enabled = *argument++ == '1';
+			argument += strspn(argument, " \t\r\n");
+			if (*argument != '\0') {
+				Print("Usage: vis <0/1>\n");
+				return;
+			}
+		}
+		if (!COMBAT_SCENE) {
+			Print("VIS: no active scene.\n");
+			return;
+		}
+		if (toggle) enabled = !COMBAT_SCENE->Is_Vis_Enabled();
+		COMBAT_SCENE->Enable_Vis(enabled);
+		Print("VIS %s.\n", enabled ? "Enabled." : "Disabled.");
+	}
+};
+
+
 class ScreenUVBiasConsoleFunctionClass : public ConsoleFunctionClass {
 public:
 	virtual	const char * Get_Name( void ) override	{ return "screen_uv_bias"; }
@@ -5149,6 +5184,8 @@ void	ConsoleFunctionManager::Init( void )
    //
    // SHIPPING CONSOLE FUNCTIONS ONLY
    //
+
+	FunctionList.Add(new VisControlConsoleFunctionClass());
 
 	FunctionList.Add( new GameOverConsoleFunctionClass() );
    FunctionList.Add( new AdminMessageConsoleFunctionClass() );
