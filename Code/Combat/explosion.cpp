@@ -75,8 +75,8 @@ ExplosionDefinitionClass::ExplosionDefinitionClass( void ) :
 	DecalSize( 10 ),
 	AnimatedExplosion( true ),
 	CameraShakeIntensity( 0.0f ),
-	CameraShakeRadius( 25.0f ),
-	CameraShakeDuration( 1.5f )
+	CameraShakeRadius( 0.0f ),
+	CameraShakeDuration( 0.0f )
 {
 #ifdef PARAM_EDITING_ON
 	MODEL_DEF_PARAM( ExplosionDefinitionClass, PhysDefID, "TimedDecorationPhysDef" );
@@ -191,6 +191,11 @@ bool	ExplosionDefinitionClass::Load( ChunkLoadClass &cload )
 		}
 		cload.Close_Chunk();
 	}
+
+	// Disable explosion camera shake even when existing presets contain it.
+	CameraShakeIntensity = 0.0f;
+	CameraShakeRadius = 0.0f;
+	CameraShakeDuration = 0.0f;
 
 	return true;
 }
@@ -367,14 +372,8 @@ if (!WWMath::Is_Valid_Float(dist)) {
 		REF_PTR_RELEASE( owner_ref );
 	}
 
-	// Make the camera shake!
-	if ( explosion_def->CameraShakeIntensity > 0.0f ) {
-		COMBAT_SCENE->Add_Camera_Shake(	pos,
-													explosion_def->CameraShakeRadius,
-													explosion_def->CameraShakeDuration,
-													explosion_def->CameraShakeIntensity	);
-
-	}
+	// Explosion camera shake is disabled globally, including definitions
+	// changed at runtime after loading.
 
 }
 
