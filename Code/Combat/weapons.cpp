@@ -80,6 +80,7 @@
 #include <cmath>
 
 extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern bool Golden_Chaos_Unlimited_Reserves(ArmedGameObj *);
 extern int Golden_Chaos_Weapon_Index(const char *);
 extern bool Get_Golden_Chaos_Repair_Warhead(WarheadType &);
 
@@ -100,6 +101,7 @@ struct GoldenWeaponDefinition {
 	std::unique_ptr<AmmoDefinitionClass> Secondary;
 	int Clip;
 	int Inventory;
+	bool Customized;
 };
 std::map<WeaponClass *, GoldenWeaponDefinition> GoldenWeaponDefinitions;
 
@@ -113,7 +115,7 @@ void Restore_Inactive_Golden_Chaos_Weapons()
 {
 	for (auto it = GoldenWeaponDefinitions.begin(); it != GoldenWeaponDefinitions.end();) {
 		WeaponClass * weapon = (it++)->first;
-		if (!Golden_Chaos_Player(weapon->Get_Owner())) weapon->Set_Owner(weapon->Get_Owner());
+		weapon->Set_Owner(weapon->Get_Owner());
 	}
 }
 
@@ -467,27 +469,32 @@ void	WeaponClass::Set_Owner( ArmedGameObj *owner )
 	Owner = owner;
 	auto existing = GoldenWeaponDefinitions.find(this);
 	const int index = Definition ? Golden_Chaos_Weapon_Index(Definition->Get_Name()) : -1;
-	if (!Golden_Chaos_Player(owner) || index < 0) {
+	const bool customized = Golden_Chaos_Player(owner) && index >= 0;
+	const bool unlimited = Definition && Golden_Chaos_Unlimited_Reserves(owner);
+	if (!unlimited || (existing != GoldenWeaponDefinitions.end() && existing->second.Customized != customized)) {
 		if (existing != GoldenWeaponDefinitions.end()) {
 			Definition = existing->second.Original;
 			PrimaryAmmoDefinition = WeaponManager::Find_Ammo_Definition(Definition->PrimaryAmmoDefID);
 			SecondaryAmmoDefinition = WeaponManager::Find_Ammo_Definition(Definition->SecondaryAmmoDefID);
 			{
-				ClipRounds = existing->second.Clip < 0 ? (int)Definition->ClipSize : existing->second.Clip;
+				if (existing->second.Customized) {
+					ClipRounds = existing->second.Clip < 0 ? (int)Definition->ClipSize : existing->second.Clip;
+				}
 				InventoryRounds = existing->second.Inventory < 0 ? (int)Definition->MaxInventoryRounds : existing->second.Inventory;
 			}
 			GoldenWeaponDefinitions.erase(existing);
 		}
-		return;
+		existing = GoldenWeaponDefinitions.end();
+		if (!unlimited) return;
 	}
 #ifndef PARAM_EDITING_ON
 	if (existing == GoldenWeaponDefinitions.end()) {
-		GoldenWeaponDefinition copy { Definition, Copy_Golden_Definition(Definition), nullptr, nullptr, ClipRounds, InventoryRounds };
+		GoldenWeaponDefinition copy { Definition, Copy_Golden_Definition(Definition), nullptr, nullptr, ClipRounds, InventoryRounds, customized };
 		static const float keys[] = { 0, 7, 8, 9, 3 };
-		copy.Private->KeyNumber = keys[index];
+		if (customized) copy.Private->KeyNumber = keys[index];
 		copy.Private->MaxInventoryRounds = -1;
-		if (index != 0) copy.Private->ClipSize = index == 4 ? 4 : 1;
-		if (index == 0 || index == 4) {
+		if (customized && index != 0) copy.Private->ClipSize = index == 4 ? 4 : 1;
+		if (customized && (index == 0 || index == 4)) {
 			if (PrimaryAmmoDefinition) copy.Primary = Copy_Golden_Definition(PrimaryAmmoDefinition);
 			if (SecondaryAmmoDefinition) copy.Secondary = Copy_Golden_Definition(SecondaryAmmoDefinition);
 			if (index == 4) {
@@ -499,10 +506,12 @@ void	WeaponClass::Set_Owner( ArmedGameObj *owner )
 		existing = GoldenWeaponDefinitions.emplace(this, std::move(copy)).first;
 		if (existing->second.Primary) PrimaryAmmoDefinition = existing->second.Primary.get();
 		if (existing->second.Secondary) SecondaryAmmoDefinition = existing->second.Secondary.get();
-		ClipRounds = index == 0 ? -1 : index == 4 ? 4 : std::min(std::max((int)ClipRounds, 0), 1);
+		if (customized) ClipRounds = index == 0 ? -1 : index == 4 ? 4 : std::min(std::max((int)ClipRounds, 0), 1);
 		InventoryRounds = -1;
 	}
-	if (index == 0) {
+	// Inventory updates and network imports may replace the reserve count.
+	InventoryRounds = -1;
+	if (customized && index == 0) {
 		Vector3 origin;
 		owner->Get_Position(&origin);
 		WarheadType repair_warhead;

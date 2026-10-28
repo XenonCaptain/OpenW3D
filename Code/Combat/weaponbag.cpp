@@ -49,6 +49,7 @@
 #include <algorithm>
 #ifndef PARAM_EDITING_ON
 #include "gamedata.h"
+#include "gameinitmgr.h"
 #endif
 
 namespace {
@@ -75,6 +76,19 @@ bool Golden_Chaos_Player(ArmedGameObj * owner)
 #else
 	return owner && owner == COMBAT_STAR && owner->As_SoldierGameObj() &&
 		The_Game() && The_Game()->Is_Single_Player();
+#endif
+}
+
+// Reserve ammunition is local-player only; the other Golden Chaos features
+// retain their stricter single-player predicate.
+bool Golden_Chaos_Unlimited_Reserves(ArmedGameObj * owner)
+{
+#ifdef PARAM_EDITING_ON
+	return false;
+#else
+	return owner && owner == COMBAT_STAR && owner->As_SoldierGameObj() &&
+		The_Game() && (The_Game()->Is_Single_Player() || The_Game()->Is_Skirmish() ||
+		GameInitMgrClass::Is_LAN_Initialized());
 #endif
 }
 
