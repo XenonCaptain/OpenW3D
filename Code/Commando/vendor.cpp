@@ -58,6 +58,14 @@
 ////////////////////////////////////////////////////////////////
 //	Namespaces
 ////////////////////////////////////////////////////////////////
+extern bool Golden_Chaos_Unlimited_Reserves(ArmedGameObj *);
+
+// Keep the displayed price and the authoritative debit on the same rule.
+int Golden_Chaos_Purchase_Cost(SoldierGameObj * player, int cost)
+{
+	return Golden_Chaos_Unlimited_Reserves(player) ? 0 : cost;
+}
+
 using namespace BuildingConstants;
 
 
@@ -75,6 +83,7 @@ VendorClass::Purchase_Vehicle
 	int							vehicle_id
 )
 {
+	cost = Golden_Chaos_Purchase_Cost(player, cost);
 	PURCHASE_ERROR retval = PERR_NOT_IN_STOCK;
 
 	//
@@ -145,6 +154,7 @@ VendorClass::Purchase_Powerup
 	int							powerup_id
 )
 {
+	cost = Golden_Chaos_Purchase_Cost(player, cost);
 	PURCHASE_ERROR retval = PERR_NO_FUNDS;
 
 	//
@@ -205,6 +215,8 @@ VendorClass::Purchase_Character
 	int							definition_id
 )
 {
+	const int normal_cost = cost;
+	cost = Golden_Chaos_Purchase_Cost(player, cost);
 	PURCHASE_ERROR retval = PERR_NO_FUNDS;
 
 	//
@@ -226,7 +238,7 @@ VendorClass::Purchase_Character
 		//	Check to see if our soldier factory is operational
 		//
 		BuildingGameObj *building = base->Find_Building (TYPE_SOLDIER_FACTORY);
-		if ((building != nullptr && building->Is_Destroyed () == false) || cost == 0) {
+		if ((building != nullptr && building->Is_Destroyed () == false) || normal_cost == 0) {
 
 			//
 			//	Lookup the new definition for the soldier

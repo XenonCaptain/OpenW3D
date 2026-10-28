@@ -55,6 +55,7 @@
 #include "merchandisectrl.h"
 #include "teampurchasesettings.h"
 #include "vendor.h"
+extern int Golden_Chaos_Purchase_Cost(SoldierGameObj *, int);
 #include "playerdata.h"
 #include "dialogmgr.h"
 #include "combat.h"
@@ -260,7 +261,7 @@ CNCPurchaseMainMenuClass::Configure_Purchase_Controls (void)
 	MerchandiseCtrlClass *ctrl = (MerchandiseCtrlClass *)Get_Dlg_Item (IDC_BEACON_PURCHASE);
 	if (ctrl != nullptr) {
 		ctrl->Set_Text (definition->Get_Beacon_Name ());
-		ctrl->Set_Cost (definition->Get_Beacon_Cost ());
+		ctrl->Set_Cost (Golden_Chaos_Purchase_Cost(COMBAT_STAR, definition->Get_Beacon_Cost ()));
 		ctrl->Set_Texture (definition->Get_Beacon_Texture ());
 	}
 
@@ -692,7 +693,7 @@ CNCPurchaseMainMenuClass::Refresh_Beacon_State (void)
 	//
 	//	Get the beacon cost and the player's current cash supply
 	//
-	float cost	= float(definition->Get_Beacon_Cost ());
+	float cost	= float(Golden_Chaos_Purchase_Cost(COMBAT_STAR, definition->Get_Beacon_Cost ()));
 	int funds	= 0;
 	if (COMBAT_STAR->Get_Player_Data() != nullptr) {
 		funds	= (int) COMBAT_STAR->Get_Player_Data ()->Get_Money ();

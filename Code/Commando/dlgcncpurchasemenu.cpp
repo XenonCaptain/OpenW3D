@@ -39,6 +39,7 @@
 #include "dlgcncpurchasemainmenu.h"
 #include "purchasesettings.h"
 #include "vendor.h"
+extern int Golden_Chaos_Purchase_Cost(SoldierGameObj *, int);
 #include "merchandisectrl.h"
 #include "playerdata.h"
 #include "combat.h"
@@ -154,7 +155,7 @@ CNCPurchaseMenuClass::On_Init_Dialog (void)
 				//
 				//	Configure the merchandise settings
 				//
-				int cost = int(Definition->Get_Cost (index) * CostScalingFactor);
+				int cost = Golden_Chaos_Purchase_Cost(COMBAT_STAR, int(Definition->Get_Cost (index) * CostScalingFactor));
 				ctrl->Set_Text (Definition->Get_Name (index));
 				ctrl->Set_Cost (cost);
 				ctrl->Set_Texture (Definition->Get_Texture (index));
@@ -175,7 +176,7 @@ CNCPurchaseMenuClass::On_Init_Dialog (void)
 				//
 				//	Disable any options that cost money if production is disabled
 				//
-				if ((IsProductionDisabled && (cost > 0)) || (player_data->Get_Money () < cost)) {
+				if ((IsProductionDisabled && (Definition->Get_Cost (index) > 0)) || (player_data->Get_Money () < cost)) {
 					ctrl->Enable (false);
 				}
 
@@ -326,7 +327,7 @@ CNCPurchaseMenuClass::Add_Item_To_Shopping_Cart (int ctrl_id)
 	WWASSERT(COMBAT_STAR->Get_Player_Data() != nullptr);
 
 	int funds	= (int) COMBAT_STAR->Get_Player_Data ()->Get_Money ();
-	int cost		= int(Definition->Get_Cost (item_index) * CostScalingFactor);
+	int cost		= Golden_Chaos_Purchase_Cost(COMBAT_STAR, int(Definition->Get_Cost (item_index) * CostScalingFactor));
 	if ((TotalCost + cost) <= funds) {
 
 		//
@@ -753,7 +754,7 @@ CNCPurchaseMenuClass::Update_Building_Health (void)
 		//
 		//	Show the cost doubled text
 		//
-		if (life <= 0) {
+		if (life <= 0 && Golden_Chaos_Purchase_Cost(COMBAT_STAR, 1) != 0) {
 			Get_Dlg_Item (IDC_COST_X2_TEXT)->Show (true);
 		}
 	}
@@ -848,12 +849,12 @@ CNCPurchaseMenuClass::Update_Enabled_Status (void)
 				//
 				//	Configure the merchandise settings
 				//
-				int cost = int(Definition->Get_Cost (index) * CostScalingFactor);
+				int cost = Golden_Chaos_Purchase_Cost(COMBAT_STAR, int(Definition->Get_Cost (index) * CostScalingFactor));
 
 				//
 				//	Disable any options that cost money if production is disabled
 				//
-				if ((IsProductionDisabled && (cost > 0)) || (player_data->Get_Money () < cost)) {
+				if ((IsProductionDisabled && (Definition->Get_Cost (index) > 0)) || (player_data->Get_Money () < cost)) {
 					ctrl->Enable (false);
 				} else {
 					ctrl->Enable (true);
