@@ -603,7 +603,12 @@ void	WeaponClass::Add_Rounds( int num )
 	if ( ClipRounds == 0 ) {
 		if ( num < 0 ) {
 			ClipRounds = Definition->ClipSize;
-		} else if ( InventoryRounds >= 0 )  {
+		} else if ( InventoryRounds >= 0 ||
+			(num > 0 && Golden_Chaos_Unlimited_Reserves(Get_Owner())) ) {
+			// The local player's private definition enables unlimited reserves
+			// before Add_Rounds grants the initial ammunition. Still load that
+			// ammunition into an empty clip, rather than forcing a reload on
+			// first selection. A zero-round inventory import must not refill it.
 			int count = std::min( num, (int)Definition->ClipSize );
 			num -= count;
 			ClipRounds = count;
