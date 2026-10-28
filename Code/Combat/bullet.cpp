@@ -65,6 +65,31 @@ extern float Golden_Chaos_Ammo_Range(ArmedGameObj *, const AmmoDefinitionClass *
 extern bool Golden_Chaos_Player(ArmedGameObj *);
 extern int Golden_Chaos_Weapon_Index(const char *);
 extern void Mark_Golden_Chaos_Sniper_Victim(DamageableGameObj *, ArmedGameObj *);
+extern const OffenseObjectClass * Set_Golden_Chaos_Repair_Offense(const OffenseObjectClass *);
+extern bool Get_Golden_Chaos_Repair_Warhead(WarheadType &);
+
+namespace {
+class GoldenRepairScope {
+	const OffenseObjectClass * Previous;
+	bool Active;
+public:
+	GoldenRepairScope(OffenseObjectClass & offense, bool active) : Previous(nullptr), Active(active && Golden_Chaos_Player(offense.Get_Owner()))
+	{
+		if (Active) {
+			// Projectiles borrow canonical ammo, not the weapon's private copy.
+			// Set the actual hit too, and fail harmlessly if Repair is missing.
+			WarheadType warhead;
+			const bool found = Get_Golden_Chaos_Repair_Warhead(warhead);
+			offense.Set_Damage(found ? -4.0f : 0.0f);
+			if (found) offense.Set_Warhead(warhead);
+			Previous = Set_Golden_Chaos_Repair_Offense(&offense);
+		}
+	}
+	~GoldenRepairScope() { if (Active) Set_Golden_Chaos_Repair_Offense(Previous); }
+	GoldenRepairScope(const GoldenRepairScope &) = delete;
+	GoldenRepairScope & operator=(const GoldenRepairScope &) = delete;
+};
+}
 
 
 /*
@@ -208,14 +233,16 @@ void BeamEffectManagerClass::Internal_Get_New_Beam(SegmentedLineClass ** set_bea
 }
 
 
-static bool Is_Player_Sniper_One_Shot(const ArmedGameObj * source, const AmmoDefinitionClass * ammo)
+static bool Is_Golden_Player_Ammo(const ArmedGameObj * source, const AmmoDefinitionClass * ammo, int weapon_index)
 {
 	// Capture the firing weapon now; switching weapons cannot upgrade another
 	// weapon's projectile while it is in flight.
 	ArmedGameObj * owner = const_cast<ArmedGameObj *>(source);
 	if (!Golden_Chaos_Player(owner) || !ammo) return false;
 	WeaponClass * weapon = owner->Get_Weapon();
-	if (!weapon || Golden_Chaos_Weapon_Index(weapon->Get_Name()) != 4) return false;
+	if (!weapon) return false;
+	const bool regular_repair = weapon_index == 0 && !stricmp(weapon->Get_Name(), "Weapon_RepairGun_Player");
+	if (!regular_repair && Golden_Chaos_Weapon_Index(weapon->Get_Name()) != weapon_index) return false;
 	const WeaponDefinitionClass * definition = weapon->Get_Definition();
 	return ammo->Get_ID() == definition->PrimaryAmmoDefID || ammo->Get_ID() == definition->SecondaryAmmoDefID;
 }
@@ -236,7 +263,8 @@ public:
 		DidExplode( false ),
 		LastHitID( 0 ),
 		GrenadeSafetyTimer( 0 ),
-		GoldenSniper( Is_Player_Sniper_One_Shot(owner, def) )
+		GoldenSniper( Is_Golden_Player_Ammo(owner, def, 4) ),
+		GoldenRepair( Is_Golden_Player_Ammo(owner, def, 0) )
 	{}
 
 	ArmedGameObj * Get_Owner( void ) const 	{ return (ArmedGameObj *)Owner.Get_Ptr(); }
@@ -254,6 +282,7 @@ public:
 	int								LastHitID;
 	float							GrenadeSafetyTimer;
 	bool							GoldenSniper;
+	bool							GoldenRepair;
 };
 
 /*
@@ -273,6 +302,8 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 	CollisionReactionType return_value = COLLISION_REACTION_DEFAULT;
 	OffenseObjectClass offense( AmmoDefinition->Damage, (int)AmmoDefinition->Warhead, Get_Owner() );
 	offense.EnableClientDamage = true;	// Only bullets apply to client damage;
+	// Scope the exact hit, including nested script callbacks and early returns.
+	GoldenRepairScope repair_scope(offense, GoldenRepair);
 
 	const Vector3 & collision_point = event.CollisionResult->ContactPoint;
 	const Vector3 & collision_normal = event.CollisionResult->Normal;
@@ -421,7 +452,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 				)
 			{
 				DamageableStaticPhysClass * damphys = (DamageableStaticPhysClass *)event.OtherObj;
-				OffenseObjectClass static_offense( AmmoDefinition->Damage, (int)AmmoDefinition->Warhead, Get_Owner() );
+				OffenseObjectClass static_offense( offense.Get_Damage(), offense.Get_Warhead(), Get_Owner() );
 				static_offense.EnableClientDamage = true;	// Only bullets apply to client damage;
 				damphys->Apply_Damage_Static( static_offense );
 			}
@@ -545,6 +576,7 @@ void BulletClass::Init( const BulletDataClass & data, float progress_time, const
 	BulletData.DidExplode = false;
 	BulletData.GrenadeSafetyTimer = data.GrenadeSafetyTimer;
 	BulletData.GoldenSniper = data.GoldenSniper;
+	BulletData.GoldenRepair = data.GoldenRepair;
 
 	if ( data.AmmoDefinition ) {
 		BulletData.GrenadeSafetyTimer = data.AmmoDefinition->GrenadeSafetyTime;
@@ -654,6 +686,7 @@ enum	{
 	MICROCHUNKID_TRACKING_ERROR,
 	MICROCHUNKID_MODEL_NAME_CRC,
 	MICROCHUNKID_GOLDEN_SNIPER,
+	MICROCHUNKID_GOLDEN_REPAIR,
 };
 
 bool	BulletClass::Save( ChunkSaveClass & csave )
@@ -670,6 +703,9 @@ bool	BulletClass::Save( ChunkSaveClass & csave )
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_TRACKING_ERROR, TrackingError );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_MODEL_NAME_CRC, ModelNameCRC );
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_GOLDEN_SNIPER, BulletData.GoldenSniper );
+		if (BulletData.GoldenRepair) {
+			WRITE_MICRO_CHUNK( csave, MICROCHUNKID_GOLDEN_REPAIR, BulletData.GoldenRepair );
+		}
 	csave.End_Chunk();
 
 	if ( BulletData.Get_Owner() != nullptr ) {
@@ -706,6 +742,7 @@ bool	BulletClass::Load( ChunkLoadClass & cload )
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_TRACKING_ERROR, TrackingError );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_MODEL_NAME_CRC, ModelNameCRC );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_GOLDEN_SNIPER, BulletData.GoldenSniper );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_GOLDEN_REPAIR, BulletData.GoldenRepair );
 
 						default:
 							Debug_Say(("Unhandled Micro Chunk:%d File:%s Line:%d\r\n",cload.Cur_Micro_Chunk_ID(),__FILE__,__LINE__));

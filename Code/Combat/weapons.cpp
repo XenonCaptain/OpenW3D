@@ -81,6 +81,7 @@
 
 extern bool Golden_Chaos_Player(ArmedGameObj *);
 extern int Golden_Chaos_Weapon_Index(const char *);
+extern bool Get_Golden_Chaos_Repair_Warhead(WarheadType &);
 
 namespace {
 template<class T> std::unique_ptr<T> Copy_Golden_Definition(const T * source)
@@ -504,8 +505,12 @@ void	WeaponClass::Set_Owner( ArmedGameObj *owner )
 	if (index == 0) {
 		Vector3 origin;
 		owner->Get_Position(&origin);
+		WarheadType repair_warhead;
+		const bool repair_available = Get_Golden_Chaos_Repair_Warhead(repair_warhead);
 		for (AmmoDefinitionClass * ammo : { existing->second.Primary.get(), existing->second.Secondary.get() }) {
 			if (ammo) {
+				ammo->Damage = repair_available ? -4.0f : 0.0f;
+				if (repair_available) ammo->Warhead = repair_warhead;
 				const float range = Golden_Chaos_Ammo_Range(owner, WeaponManager::Find_Ammo_Definition(ammo->Get_ID()), origin);
 				ammo->Range = range;
 				ammo->EffectiveRange = range;

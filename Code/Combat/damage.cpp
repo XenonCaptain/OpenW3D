@@ -58,8 +58,48 @@
 #include "gametype.h"
 #include "csdamageevent.h"
 #include <algorithm>
+#include <cmath>
 
 extern bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj *);
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern int Golden_Chaos_Weapon_Index(const char *);
+
+namespace {
+thread_local const OffenseObjectClass * GoldenRepairOffense = nullptr;
+}
+
+bool Get_Golden_Chaos_Repair_Warhead(WarheadType & warhead)
+{
+	warhead = ArmorWarheadManager::Get_Warhead_Type("Repair");
+	return warhead < static_cast<WarheadType>(ArmorWarheadManager::Get_Num_Warhead_Types()) &&
+		!stricmp(ArmorWarheadManager::Get_Warhead_Name(warhead), "Repair");
+}
+
+const OffenseObjectClass * Set_Golden_Chaos_Repair_Offense(const OffenseObjectClass * offense)
+{
+	const OffenseObjectClass * previous = GoldenRepairOffense;
+	GoldenRepairOffense = offense;
+	return previous;
+}
+
+bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass & offense, DamageableGameObj * target, float scale)
+{
+	ArmedGameObj * source = offense.Get_Owner();
+	const float amount = offense.Get_Damage() * scale;
+	if (!Golden_Chaos_Player(source) || !CombatManager::Is_Gameplay_Permitted()) return false;
+	WeaponClass * weapon = source->Get_Weapon();
+	const bool repair_selected = weapon && (Golden_Chaos_Weapon_Index(weapon->Get_Name()) == 0 ||
+		!stricmp(weapon->Get_Name(), "Weapon_RepairGun_Player"));
+	WarheadType repair_warhead;
+	// Keep recognizing a legitimate repair hit if a caller copies the offense.
+	return (GoldenRepairOffense == &offense || repair_selected) &&
+		Get_Golden_Chaos_Repair_Warhead(repair_warhead) && offense.Get_Warhead() == repair_warhead &&
+		offense.Get_Damage() == -4.0f &&
+		target && target != source && !target->Is_Enemy(source) && !source->Is_Enemy(target) &&
+		(target->As_SoldierGameObj() || target->As_VehicleGameObj()) &&
+		!target->Is_Delete_Pending() && target->Get_Defense_Object()->Get_Health() > 0.0f &&
+		!Is_Golden_Chaos_Sniper_Victim(target) && scale > 0.0f && std::isfinite(amount) && amount < 0.0f;
+}
 
 #ifdef WWDEBUG
 bool	DefenseObjectClass::OneShotKills	= false;
@@ -855,6 +895,12 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 
 
 	bool	is_repair = false;
+	if (Is_Golden_Chaos_Friendly_Repair(offense, Get_Owner(), scale)) {
+		// Preserve the requested -4 hit, without difficulty scaling or armor
+		// multipliers turning it into positive damage on allies/civilians.
+		damage = offense.Get_Damage() * scale;
+		damage_scale = shield_damage_scale = 1.0f;
+	}
 	if (golden_sniper_kill) {
 		// A real hostile sniper hit is lethal even through immune armor or
 		// script-controlled CanObjectDie. Keep the normal scoring/death path.
@@ -1074,6 +1120,7 @@ float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float s
 bool DefenseObjectClass::Is_Repair( const OffenseObjectClass	& offense, float scale )
 {
 	if (Is_Golden_Chaos_Sniper_Victim(Get_Owner())) return false;
+	if (Is_Golden_Chaos_Friendly_Repair(offense, Get_Owner(), scale)) return true;
 	float damage = offense.Get_Damage() * scale;
 	float damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( Skin, offense.Get_Warhead() );
 	float shield_damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( ShieldType, offense.Get_Warhead() );
@@ -1084,6 +1131,7 @@ bool DefenseObjectClass::Is_Repair( const OffenseObjectClass	& offense, float sc
 
 bool DefenseObjectClass::Would_Damage( const OffenseObjectClass	& offense, float scale )
 {
+	if (Is_Golden_Chaos_Friendly_Repair(offense, Get_Owner(), scale)) return false;
 	float damage = offense.Get_Damage() * scale;
 	float damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( Skin, offense.Get_Warhead() );
 	float shield_damage_scale = ArmorWarheadManager::Get_Damage_Multiplier( ShieldType, offense.Get_Warhead() );

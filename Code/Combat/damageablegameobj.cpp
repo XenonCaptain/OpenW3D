@@ -42,8 +42,10 @@
 #include "combat.h"
 #include "soldier.h"
 #include <set>
+#include <algorithm>
 
 extern bool Golden_Chaos_Player(ArmedGameObj *);
+extern bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass &, DamageableGameObj *, float);
 
 namespace {
 // Object-owned lifetime: erased on destruction or character reinitialization.
@@ -346,6 +348,22 @@ void	DamageableGameObj::Apply_Damage( const OffenseObjectClass & damager, float 
 
 	float old_health = DefenseObject.Get_Health();
 	float old_shield = DefenseObject.Get_Shield_Strength();
+	if (Is_Golden_Chaos_Friendly_Repair(damager, this, scale)) {
+		// Healing is not an attack. Mission Damaged callbacks can retaliate or
+		// restore cached health even when amount is negative, undoing repairs.
+		// Use the instance setters so health/armor changes still become dirty.
+		float remaining = -damager.Get_Damage() * scale;
+		if (old_health < DefenseObject.Get_Health_Max()) {
+			const float healed = std::min(remaining, DefenseObject.Get_Health_Max() - old_health);
+			DefenseObject.Set_Health(old_health + healed);
+			remaining -= healed;
+		}
+		if (remaining > 0.0f && old_shield < DefenseObject.Get_Shield_Strength_Max()) {
+			DefenseObject.Set_Shield_Strength(old_shield +
+				std::min(remaining, DefenseObject.Get_Shield_Strength_Max() - old_shield));
+		}
+		return;
+	}
 	DefenseObject.Apply_Damage( damager, scale, alternate_skin );
 	float new_health = DefenseObject.Get_Health();
 	float new_shield = DefenseObject.Get_Shield_Strength();

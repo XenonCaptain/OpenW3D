@@ -3795,13 +3795,15 @@ void	SoldierGameObj::Stop_Current_Speech( void )
 
 //------------------------------------------------------------------------------------
 extern bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj *);
+extern bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass &, DamageableGameObj *, float);
 
 void	SoldierGameObj::Apply_Damage( const OffenseObjectClass & damager, float scale, int alternate_skin )
 {
 	if (Local_Player_Yellow_Owner_Allowed(this)) {
 		return; // Don't allow the player to damage the combat star in single player
 	}
-	if ( !Is_In_Vehicle() || Is_Golden_Chaos_Sniper_Victim(this) ) {
+	if ( !Is_In_Vehicle() || Is_Golden_Chaos_Sniper_Victim(this) ||
+		Is_Golden_Chaos_Friendly_Repair(damager, this, scale) ) {
 		SmartGameObj::Apply_Damage( damager, scale, alternate_skin );
 	}
 }

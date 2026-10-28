@@ -598,8 +598,16 @@ Vector3	PhysicalGameObj::Get_Bullseye_Position( void )
 	return pos;
 }
 
+extern bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass &, DamageableGameObj *, float);
+
 void	PhysicalGameObj::Apply_Damage( const OffenseObjectClass & damager, float scale, int /* alternate_skin */ )
 {
+	// Damage-only protection (including invulnerable mission actors) must not
+	// reject the local single-player repair gun's healing of living allies.
+	if (Is_Golden_Chaos_Friendly_Repair(damager, this, scale)) {
+		DamageableGameObj::Apply_Damage(damager, scale);
+		return;
+	}
 	// If this damage is allowed
 	if ( !CombatManager::Can_Damage( damager.Get_Owner(), this)) {
 		return;
