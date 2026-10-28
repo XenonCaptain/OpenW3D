@@ -40,6 +40,8 @@
 #include "playermanager.h"
 #include "playerkill.h"
 
+extern bool Golden_Chaos_Invulnerability_Is_Soldier_Only(cPlayer *);
+
 //-----------------------------------------------------------------------------
 bool GameCombatNetworkHandlerClass::Can_Damage(ArmedGameObj * /* p_armed_damager */,
 	PhysicalGameObj * p_phys_victim)
@@ -55,7 +57,11 @@ bool GameCombatNetworkHandlerClass::Can_Damage(ArmedGameObj * /* p_armed_damager
 	if (p_victim_obj != nullptr && p_victim_obj->Has_Player()) {
 		cPlayer * p_player = cPlayerManager::Find_Player(p_victim_obj->Get_Control_Owner());
 		if (p_player && p_player->Invulnerable.Is_True()) {
-			return false;
+			// A vehicle can share its driver's player record. The forced
+			// single-player flag protects only COMBAT_STAR, not that vehicle.
+			if (p_phys_victim == COMBAT_STAR || !Golden_Chaos_Invulnerability_Is_Soldier_Only(p_player)) {
+				return false;
+			}
 		}
 	}
 

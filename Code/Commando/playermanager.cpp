@@ -64,6 +64,53 @@
 #include "ConsoleMode.h"
 #include "gamespyadmin.h"
 #include "demosupport.h"
+#include "combat.h"
+#include "soldier.h"
+
+extern bool Golden_Chaos_Player(ArmedGameObj *);
+
+namespace {
+// Borrowed from PlayerList; Remove restores and clears it before destruction.
+cPlayer * GoldenInvulnerablePlayer = nullptr;
+bool GoldenOriginalInvulnerability = false;
+
+void Restore_Golden_Chaos_Invulnerability()
+{
+	if (GoldenInvulnerablePlayer) {
+		if (GoldenInvulnerablePlayer->Invulnerable.Is_True() != GoldenOriginalInvulnerability) {
+			GoldenInvulnerablePlayer->Invulnerable.Set(GoldenOriginalInvulnerability);
+			GoldenInvulnerablePlayer->Mark_As_Modified();
+		}
+		GoldenInvulnerablePlayer = nullptr;
+	}
+}
+
+void Update_Golden_Chaos_Invulnerability()
+{
+	cPlayer * player = nullptr;
+	if (Golden_Chaos_Player(COMBAT_STAR)) {
+		cPlayer * candidate = cPlayerManager::Find_Player(COMBAT_STAR->Get_Control_Owner());
+		if (candidate && COMBAT_STAR->Get_Player_Data() == candidate) player = candidate;
+	}
+	if (player != GoldenInvulnerablePlayer) Restore_Golden_Chaos_Invulnerability();
+	if (player) {
+		if (!GoldenInvulnerablePlayer) {
+			GoldenOriginalInvulnerability = player->Invulnerable.Is_True();
+			GoldenInvulnerablePlayer = player;
+		}
+		if (!player->Invulnerable.Is_True()) {
+			player->Invulnerable.Set(true);
+			player->Mark_As_Modified();
+		}
+	}
+}
+}
+
+bool Golden_Chaos_Invulnerability_Is_Soldier_Only(cPlayer * player)
+{
+	return player && player == GoldenInvulnerablePlayer && !GoldenOriginalInvulnerability &&
+		Golden_Chaos_Player(COMBAT_STAR) && COMBAT_STAR->Get_Player_Data() == player;
+}
 
 //
 // Class statics
@@ -100,6 +147,7 @@ void cPlayerManager::Onetime_Init(void)
 //------------------------------------------------------------------------------------
 void cPlayerManager::Onetime_Shutdown(void)
 {
+	Restore_Golden_Chaos_Invulnerability();
 	WWDEBUG_SAY(("cPlayerManager::Onetime_Shutdown\n"));
 
 	if (!ConsoleBox.Is_Exclusive()) {
@@ -116,6 +164,7 @@ void cPlayerManager::Onetime_Shutdown(void)
 //------------------------------------------------------------------------------------
 void cPlayerManager::Think(void)
 {
+	Update_Golden_Chaos_Invulnerability();
 	WWPROFILE("cPlayerManager::Think");
 
 	if (MultiHUDClass::Is_On()) {
@@ -322,6 +371,7 @@ void cPlayerManager::Add(cPlayer * p_player)
 void cPlayerManager::Remove(cPlayer * p_player)
 {
 	WWASSERT(p_player != nullptr);
+	if (GoldenInvulnerablePlayer == p_player) Restore_Golden_Chaos_Invulnerability();
    PlayerList.Remove(p_player);
 
 	PlayerMgrEvent event(PLAYER_REMOVED, p_player);
