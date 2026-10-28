@@ -2497,6 +2497,13 @@ void	SoldierGameObj::Think( void )
 {
 	Update_Golden_Chaos_Movement(this);
 	Update_Golden_Chaos_Loadout(this);
+	if (Golden_Chaos_Player(this)) {
+		// KeyRing is already saved by the soldier; Give_Key sets a bit, so
+		// repeating this after loading or respawning cannot duplicate keys.
+		Give_Key(1);
+		Give_Key(2);
+		Give_Key(3);
+	}
 	if (Local_Player_Yellow_Owner_Allowed(this)) {
 		if (Get_Defense_Object()) {
 			Get_Defense_Object()->Set_Health(Get_Defense_Object()->Get_Health_Max());
