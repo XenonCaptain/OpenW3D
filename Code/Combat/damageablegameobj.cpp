@@ -49,7 +49,7 @@ extern bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass &, Damageab
 
 namespace {
 // Object-owned lifetime: erased on destruction or character reinitialization.
-// Only sniper-hit enemies enter this set; no shared preset is changed.
+// Sniper-hit enemies and neutral destructibles enter this set; no preset changes.
 std::set<DamageableGameObj *> GoldenSniperVictims;
 }
 
@@ -61,9 +61,11 @@ bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj * target)
 void Mark_Golden_Chaos_Sniper_Victim(DamageableGameObj * target, ArmedGameObj * shooter)
 {
 	if (target && Golden_Chaos_Player(shooter) && CombatManager::I_Am_Server() &&
-		target != shooter && target->Is_Enemy(shooter) &&
+		target != shooter && !target->Is_Teammate(shooter) &&
+		CombatManager::Is_Gameplay_Permitted() &&
 		target->Get_Defense_Object()->Get_Health() > 0 && !target->Is_Delete_Pending()) {
 		GoldenSniperVictims.insert(target);
+		target->Get_Defense_Object()->Set_Can_Object_Die(true);
 	}
 }
 

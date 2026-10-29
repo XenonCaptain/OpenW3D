@@ -65,10 +65,26 @@ extern float Golden_Chaos_Ammo_Range(ArmedGameObj *, const AmmoDefinitionClass *
 extern bool Golden_Chaos_Player(ArmedGameObj *);
 extern int Golden_Chaos_Weapon_Index(const char *);
 extern void Mark_Golden_Chaos_Sniper_Victim(DamageableGameObj *, ArmedGameObj *);
+extern const OffenseObjectClass * Set_Golden_Chaos_Sniper_Offense(const OffenseObjectClass *);
 extern const OffenseObjectClass * Set_Golden_Chaos_Repair_Offense(const OffenseObjectClass *);
 extern bool Get_Golden_Chaos_Repair_Warhead(WarheadType &);
 
 namespace {
+// The bullet captures sniper provenance at firing time. Pointer identity keeps
+// explosions and nested script attacks from inheriting the lethal override.
+class GoldenSniperScope {
+	const OffenseObjectClass * Previous;
+	bool Active;
+public:
+	GoldenSniperScope(const OffenseObjectClass & offense, bool active) :
+		Previous(nullptr), Active(active && Golden_Chaos_Player(offense.Get_Owner())) {
+		if (Active) Previous = Set_Golden_Chaos_Sniper_Offense(&offense);
+	}
+	~GoldenSniperScope() { if (Active) Set_Golden_Chaos_Sniper_Offense(Previous); }
+	GoldenSniperScope(const GoldenSniperScope &) = delete;
+	GoldenSniperScope & operator=(const GoldenSniperScope &) = delete;
+};
+
 class GoldenRepairScope {
 	const OffenseObjectClass * Previous;
 	bool Active;
@@ -304,6 +320,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 	offense.EnableClientDamage = true;	// Only bullets apply to client damage;
 	// Scope the exact hit, including nested script callbacks and early returns.
 	GoldenRepairScope repair_scope(offense, GoldenRepair);
+	GoldenSniperScope sniper_scope(offense, GoldenSniper);
 
 	const Vector3 & collision_point = event.CollisionResult->ContactPoint;
 	const Vector3 & collision_normal = event.CollisionResult->Normal;
@@ -454,6 +471,7 @@ CollisionReactionType BulletDataClass::Bullet_Collision_Occurred( const Collisio
 				DamageableStaticPhysClass * damphys = (DamageableStaticPhysClass *)event.OtherObj;
 				OffenseObjectClass static_offense( offense.Get_Damage(), offense.Get_Warhead(), Get_Owner() );
 				static_offense.EnableClientDamage = true;	// Only bullets apply to client damage;
+				GoldenSniperScope static_sniper_scope(static_offense, GoldenSniper);
 				damphys->Apply_Damage_Static( static_offense );
 			}
 

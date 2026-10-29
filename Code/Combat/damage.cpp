@@ -66,6 +66,20 @@ extern int Golden_Chaos_Weapon_Index(const char *);
 
 namespace {
 thread_local const OffenseObjectClass * GoldenRepairOffense = nullptr;
+thread_local const OffenseObjectClass * GoldenSniperOffense = nullptr;
+}
+
+const OffenseObjectClass * Set_Golden_Chaos_Sniper_Offense(const OffenseObjectClass * offense)
+{
+	const OffenseObjectClass * previous = GoldenSniperOffense;
+	GoldenSniperOffense = offense;
+	return previous;
+}
+
+bool Is_Golden_Chaos_Sniper_Offense(const OffenseObjectClass & offense)
+{
+	return GoldenSniperOffense == &offense && Golden_Chaos_Player(offense.Get_Owner()) &&
+		CombatManager::I_Am_Server() && CombatManager::Is_Gameplay_Permitted();
 }
 
 bool Get_Golden_Chaos_Repair_Warhead(WarheadType & warhead)
@@ -826,7 +840,11 @@ void	DefenseObjectClass::Request_Damage( const OffenseObjectClass & offense, flo
 */
 float	DefenseObjectClass::Do_Damage( const OffenseObjectClass & offense, float scale, int alternate_skin )
 {
-	const bool golden_sniper_kill = Is_Golden_Chaos_Sniper_Victim(Get_Owner());
+	const bool golden_sniper_kill = Is_Golden_Chaos_Sniper_Victim(Get_Owner()) ||
+		(!Get_Owner() && Is_Golden_Chaos_Sniper_Offense(offense));
+	// Only this target instance is changed; shared armor and weapon presets stay intact.
+	if (golden_sniper_kill) CanObjectDie = true;
+
 	SmartGameObj * smart = nullptr;
 
 	if ( offense.Get_Owner() != nullptr ) {

@@ -600,11 +600,20 @@ Vector3	PhysicalGameObj::Get_Bullseye_Position( void )
 
 extern bool Is_Golden_Chaos_Friendly_Repair(const OffenseObjectClass &, DamageableGameObj *, float);
 
+extern bool Is_Golden_Chaos_Sniper_Victim(DamageableGameObj *);
+extern bool Is_Golden_Chaos_Sniper_Offense(const OffenseObjectClass &);
+
 void	PhysicalGameObj::Apply_Damage( const OffenseObjectClass & damager, float scale, int /* alternate_skin */ )
 {
 	// Damage-only protection (including invulnerable mission actors) must not
 	// reject the local single-player repair gun's healing of living allies.
 	if (Is_Golden_Chaos_Friendly_Repair(damager, this, scale)) {
+		DamageableGameObj::Apply_Damage(damager, scale);
+		return;
+	}
+	// Proven sniper impacts must reach the normal death callbacks even when
+	// damage-only protection would reject the target before its defense object.
+	if (Is_Golden_Chaos_Sniper_Victim(this) && Is_Golden_Chaos_Sniper_Offense(damager)) {
 		DamageableGameObj::Apply_Damage(damager, scale);
 		return;
 	}
