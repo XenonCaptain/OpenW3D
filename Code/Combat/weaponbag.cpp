@@ -52,6 +52,7 @@
 #include "gameinitmgr.h"
 #endif
 
+// CnC_Weapon_RepairGun_Player_Special is skipped.
 namespace {
 const char * const GoldenPresets[] = {
 	"CnC_Weapon_RepairGun_Player_Special", "Weapon_MineRemote_Player",
@@ -124,10 +125,11 @@ void Update_Golden_Chaos_Loadout(SoldierGameObj * soldier)
 {
 	if (!Golden_Chaos_Player(soldier)) return;
 	WeaponBagClass * bag = soldier->Get_Weapon_Bag();
-	const WeaponDefinitionClass * definitions[5];
+	// Skip the repair-gun grant, retaining its carry-record slot for old saves.
+	const WeaponDefinitionClass * definitions[5] = {};
 	// Validate all presets before clearing anything. Missing/modded databases
 	// leave the original inventory intact and may be retried on the next update.
-	for (int i = 0; i < 5; ++i) {
+	for (int i = 1; i < 5; ++i) {
 		definitions[i] = WeaponManager::Find_Weapon_Definition(GoldenPresets[i]);
 		if (!definitions[i]) return;
 	}
@@ -143,7 +145,7 @@ void Update_Golden_Chaos_Loadout(SoldierGameObj * soldier)
 		Capture_Golden_Chaos_Loadout(soldier);
 	}
 	bool changed = false;
-	for (int i = 0; i < 5; ++i) {
+	for (int i = 1; i < 5; ++i) {
 		WeaponClass * weapon = nullptr;
 		for (int j = 1; j < bag->Get_Count(); ++j) {
 			if (bag->Peek_Weapon(j)->Get_ID() == definitions[i]->Get_ID()) { weapon = bag->Peek_Weapon(j); break; }
@@ -155,7 +157,7 @@ void Update_Golden_Chaos_Loadout(SoldierGameObj * soldier)
 		weapon->Set_Owner(soldier);
 		if (missing || (first_bag_update && !restored_bag)) {
 			const int rounds = GoldenInventoryState.Rounds[i];
-			weapon->Set_Clip_Rounds(i == 0 ? -1 : i == 4 ? 4 : std::min(std::max(rounds, 0), 1));
+			weapon->Set_Clip_Rounds(i == 4 ? 4 : std::min(std::max(rounds, 0), 1));
 			weapon->Set_Inventory_Rounds(-1);
 			changed = true;
 		}
@@ -164,7 +166,11 @@ void Update_Golden_Chaos_Loadout(SoldierGameObj * soldier)
 	state.Initialized = true;
 	if (first_bag_update) {
 		if (first_loadout || !restored_bag || !bag->Get_Weapon()) {
-			bag->Select_Weapon_ID(GoldenInventoryState.Selected ? GoldenInventoryState.Selected : definitions[4]->Get_ID());
+			int selected = definitions[4]->Get_ID();
+			for (int i = 1; i < 5; ++i) {
+				if (GoldenInventoryState.Selected == definitions[i]->Get_ID()) selected = GoldenInventoryState.Selected;
+			}
+			bag->Select_Weapon_ID(selected);
 		}
 		changed = true;
 	}
