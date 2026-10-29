@@ -450,6 +450,11 @@ SoundHandleClass *OpenALAudioClass::Get_2D_Handle (const AudibleSoundClass &soun
 			// Get a pointer to the object that is currently using this sample
 			AudibleSoundClass *sample_obj = OpenALHandleClass::Get_Sample_User(sample);
 
+			// Paused pages must not exhaust sources needed by the active page.
+			if (sample_obj != nullptr && state == AL_PAUSED) {
+				sample_obj->Free_Miles_Handle();
+				sample_obj = nullptr;
+			}
 			if (sample_obj == nullptr) {
 				// Return this sample handle to the caller
 				free_sample = sample;
@@ -514,6 +519,11 @@ SoundHandleClass *OpenALAudioClass::Get_3D_Handle (const Sound3DClass &sound_obj
 		if (alGetError() == AL_NO_ERROR && state != AL_PLAYING) {
 			// Get a pointer to the object that is currently using this sample
 			AudibleSoundClass *sample_obj = OpenALHandleClass::Get_Sample_User(sample);
+			// Paused pages must not exhaust sources needed by the active page.
+			if (sample_obj != nullptr && state == AL_PAUSED) {
+				sample_obj->Free_Miles_Handle();
+				sample_obj = nullptr;
+			}
 			if (sample_obj == nullptr) {
 				// Return this sample handle to the caller
 				free_sample = sample;

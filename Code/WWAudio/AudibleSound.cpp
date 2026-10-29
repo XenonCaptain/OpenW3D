@@ -555,11 +555,12 @@ AudibleSoundClass::Pause (void)
 		// location
 		//
 		m_CurrentPosition = TIMEGETTIME () - m_Timestamp;
+		if (m_Length > 0) m_CurrentPosition %= m_Length;
 
 		//
-		//	Get rid of our play-handle (this will stop the sound)
+		//	Preserve the cursor and queued buffers; menu audio may reclaim the handle
 		//
-		Free_Miles_Handle ();
+		if (m_SoundHandle != nullptr) m_SoundHandle->Stop_Sample ();
 
 		//
 		// Remember our new state
@@ -594,20 +595,16 @@ AudibleSoundClass::Resume (void)
 		//
 		// Ensure we have a play handle...
 		//
-		Allocate_Miles_Handle ();
-
-		//
-		// If we have a valid handle, then start playing the sample
-		//
 		if (m_SoundHandle != nullptr) {
-			m_SoundHandle->Start_Sample ();
-		}
-
-		//
-		//	Re-seek to the correct position in the sound
-		//
-		if (m_CurrentPosition > 0) {
-			Seek (m_CurrentPosition);
+			// Retained sources already have the correct cursor and stream queue.
+			m_SoundHandle->Resume_Sample ();
+		} else if (!m_IsCulled) {
+			// Recreate a source reclaimed for menu audio, seeking after startup.
+			Allocate_Miles_Handle ();
+			if (m_SoundHandle != nullptr) {
+				m_SoundHandle->Start_Sample ();
+				if (m_CurrentPosition > 0) Seek (m_CurrentPosition);
+			}
 		}
 
 		//
