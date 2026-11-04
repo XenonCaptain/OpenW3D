@@ -47,6 +47,7 @@
 #include "translateobj.h"
 #include "translatedb.h"
 #include "combat.h"
+#include "coltest.h"
 #include "messagewindow.h"
 #include "buildingmonitor.h"
 #include "basecontroller.h"
@@ -57,6 +58,8 @@
 #include "apppackettypes.h"
 #include "wwprofile.h"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -350,7 +353,8 @@ BuildingGameObj::BuildingGameObj (void)	:
 	CurrentAnnouncement (nullptr),
 	IsDestroyed (false),
 	BuildingMonitor (nullptr),
-	BaseController (nullptr)
+	BaseController (nullptr),
+	BoundingBox (Position, Vector3 (0, 0, 0))
 {
 	GameObjManager::Add_Building (this);
 	Update_State ();
@@ -427,7 +431,8 @@ enum	{
 
 	MICROCHUNKID_POSITION				=	1,
 	MICROCHUNKID_ISPOWERON,
-	MICROCHUNKID_COLLECTION_SPHERE
+	MICROCHUNKID_COLLECTION_SPHERE,
+	MICROCHUNKID_IS_SPY_DISABLED
 };
 
 
@@ -447,6 +452,7 @@ BuildingGameObj::Save (ChunkSaveClass &csave)
 		WRITE_MICRO_CHUNK (csave, MICROCHUNKID_POSITION,				Position);
 		WRITE_MICRO_CHUNK (csave, MICROCHUNKID_ISPOWERON,				IsPowerOn);
 		WRITE_MICRO_CHUNK (csave, MICROCHUNKID_COLLECTION_SPHERE,	CollectionSphere);
+		WRITE_MICRO_CHUNK (csave, MICROCHUNKID_IS_SPY_DISABLED, IsSpyDisabled);
 	csave.End_Chunk ();
 
 	return true;
@@ -475,6 +481,7 @@ BuildingGameObj::Load (ChunkLoadClass &cload)
 						READ_MICRO_CHUNK (cload, MICROCHUNKID_POSITION,				Position);
 						READ_MICRO_CHUNK (cload, MICROCHUNKID_ISPOWERON,			IsPowerOn);
 						READ_MICRO_CHUNK (cload, MICROCHUNKID_COLLECTION_SPHERE,	CollectionSphere);
+						READ_MICRO_CHUNK (cload, MICROCHUNKID_IS_SPY_DISABLED, IsSpyDisabled);
 
 						default:
 							Debug_Say(("Unhandled Micro Chunk:%d File:%s Line:%d\r\n",cload.Cur_Micro_Chunk_ID(),__FILE__,__LINE__));
@@ -703,7 +710,14 @@ BuildingGameObj::Set_Normalized_Health (float health)
 	//	Note:  We convert from normalized to absolute values
 	//
 	DefenseObject.Set_Health (health * DefenseObject.Get_Health_Max ());
-	Update_State ();
+	if (CombatManager::I_Am_Server ()) {
+		Set_Object_Dirty_Bit (NetworkObjectClass::BIT_OCCASIONAL, true);
+	}
+	if (IsDestroyed && DefenseObject.Get_Health () > 0.0F) {
+		On_Revived ();
+	} else {
+		Update_State ();
+	}
 
 
 	WWDEBUG_SAY(("Building State Set:\r\n"));
@@ -949,6 +963,7 @@ BuildingGameObj::Reset_Components (void)
 	PowerOnLights.Reset_List();
 	PowerOffLights.Reset_List();
 	Aggregates.Reset_List();
+	Update_Bounding_Box ();
 }
 
 
@@ -1170,6 +1185,7 @@ BuildingGameObj::Import_Rare (BitStreamClass &packet)
 	packet.Get (is_destroyed);
 	packet.Get (is_power_on);
 	packet.Get (current_state, BITPACK_BUILDING_STATE);
+	packet.Get (IsSpyDisabled);
 
 	//
 	//	Is the power state of the building changing?
@@ -1195,9 +1211,7 @@ BuildingGameObj::Import_Rare (BitStreamClass &packet)
 	//
 	//	Become destroyed (if necessary)
 	//
-	if (is_destroyed && IsDestroyed == false) {
-		On_Destroyed ();
-	}
+	Set_Is_Destroyed (is_destroyed);
 
 	return ;
 }
@@ -1219,6 +1233,7 @@ BuildingGameObj::Export_Rare (BitStreamClass &packet)
 	packet.Add (IsDestroyed);
 	packet.Add (IsPowerOn);
 	packet.Add (CurrentState, BITPACK_BUILDING_STATE);
+	packet.Add (IsSpyDisabled);
 	return ;
 }
 
@@ -1385,6 +1400,7 @@ BuildingGameObj::Collect_Building_Components (void)
 	//
 	//	Update the building's state
 	//
+	Update_Bounding_Box ();
 	Initialize_Building ();
 	Update_State (true);
 	return ;
@@ -1541,7 +1557,8 @@ BuildingGameObj::Find_Closest_Poly_For_Model
 (
 	RenderObjClass *	model,
 	const Vector3 &	pos,
-	float *				distance2
+	float *				distance2,
+	Vector3 *			poly_pos
 )
 {
 	if (model == nullptr) {
@@ -1561,7 +1578,7 @@ BuildingGameObj::Find_Closest_Poly_For_Model
 		//	Recurse into this sub-object
 		//
 		if (sub_obj != nullptr) {
-			Find_Closest_Poly_For_Model (sub_obj, pos, distance2);
+			Find_Closest_Poly_For_Model (sub_obj, pos, distance2, poly_pos);
 		}
 
 		REF_PTR_RELEASE (sub_obj);
@@ -1596,6 +1613,9 @@ BuildingGameObj::Find_Closest_Poly_For_Model
 				float dist2				= delta.Length2 ();
 				if (dist2 < (*distance2)) {
 					(*distance2) = dist2;
+					if (poly_pos != nullptr) {
+						Matrix3D::Transform_Vector (model->Get_Transform (), poly_center, poly_pos);
+					}
 				}
 			}
 		}
@@ -1613,7 +1633,13 @@ BuildingGameObj::Find_Closest_Poly_For_Model
 void
 BuildingGameObj::Find_Closest_Poly (const Vector3 &pos, float *distance2)
 {
-	(*distance2) = 9999.0F;
+	Find_Closest_Poly (pos, distance2, nullptr);
+	*distance2 = std::min (*distance2, 9999.0F);
+}
+
+void BuildingGameObj::Find_Closest_Poly (const Vector3 &pos, float *distance2, Vector3 *poly_pos)
+{
+	*distance2 = std::numeric_limits<float>::infinity ();
 
 	RefMultiListIterator<StaticPhysClass> int_iterator (&InteriorMeshes);
 	RefMultiListIterator<StaticPhysClass> ext_iterator (&ExteriorMeshes);
@@ -1622,15 +1648,161 @@ BuildingGameObj::Find_Closest_Poly (const Vector3 &pos, float *distance2)
 	//	Check all the interior meshes first
 	//
 	for (int_iterator.First (); !int_iterator.Is_Done (); int_iterator.Next ()) {
-		Find_Closest_Poly_For_Model (int_iterator.Peek_Obj ()->Peek_Model (), pos, distance2);
+		Find_Closest_Poly_For_Model (int_iterator.Peek_Obj ()->Peek_Model (), pos, distance2, poly_pos);
 	}
 
 	//
 	//	Now, check all the exterior meshes
 	//
 	for (ext_iterator.First (); !ext_iterator.Is_Done (); ext_iterator.Next ()) {
-		Find_Closest_Poly_For_Model (ext_iterator.Peek_Obj ()->Peek_Model (), pos, distance2);
+		Find_Closest_Poly_For_Model (ext_iterator.Peek_Obj ()->Peek_Model (), pos, distance2, poly_pos);
 	}
 
 	return ;
+}
+
+
+int BuildingGameObj::Building_In_Range (const Vector3 &point, float range)
+{
+	float range_sq = range * range;
+	if (!std::isfinite (range_sq) || !Is_In_Range_Coarse (point, range_sq)) {
+		return 0;
+	}
+
+	BuildingAggregateClass *mct = Find_MCT ();
+	if (mct != nullptr) {
+		float distance2 = std::numeric_limits<float>::infinity ();
+		Find_Closest_Poly_For_Model (mct->Peek_Model (), point, &distance2);
+		if (distance2 <= range_sq) {
+			return 2;
+		}
+	}
+
+	float distance2;
+	Find_Closest_Poly (point, &distance2, nullptr);
+	return distance2 <= range_sq ? 1 : 0;
+}
+
+bool BuildingGameObj::Cast_Ray (RayCollisionTestClass &raytest)
+{
+	if (raytest.Cull (BoundingBox)) {
+		return false;
+	}
+
+	bool hit = false;
+	for (auto *meshes : { &InteriorMeshes, &ExteriorMeshes }) {
+		RefMultiListIterator<StaticPhysClass> it (meshes);
+		for (it.First (); !it.Is_Done (); it.Next ()) {
+			RenderObjClass *model = it.Peek_Obj ()->Peek_Model ();
+			if (model != nullptr && model->Cast_Ray (raytest)) {
+				hit = true;
+			}
+		}
+	}
+	return hit;
+}
+
+float BuildingGameObj::Find_Closest_Poly (const Vector3 &pos)
+{
+	float distance2;
+	Find_Closest_Poly (pos, &distance2);
+	return distance2;
+}
+
+BuildingAggregateClass *BuildingGameObj::Find_MCT (void)
+{
+	RefMultiListIterator<BuildingAggregateClass> it (&Aggregates);
+	for (it.First (); !it.Is_Done (); it.Next ()) {
+		BuildingAggregateClass *aggregate = it.Peek_Obj ();
+		if (aggregate->Is_MCT ()) {
+			return aggregate;
+		}
+	}
+	return nullptr;
+}
+
+void BuildingGameObj::Import_Occasional (BitStreamClass &packet)
+{
+	DamageableGameObj::Import_Occasional (packet);
+	Update_State ();
+}
+
+bool BuildingGameObj::Is_In_Range_Coarse (const Vector3 &point, float range_sq) const
+{
+	Vector3 delta (0, 0, 0);
+	for (int axis = 0; axis < 3; ++axis) {
+		float offset = point[axis] - BoundingBox.Center[axis];
+		float extent = BoundingBox.Extent[axis];
+		delta[axis] = offset - std::clamp (offset, -extent, extent);
+	}
+	return delta.Length2 () <= range_sq;
+}
+
+void BuildingGameObj::On_Revived (void)
+{
+	IsDestroyed = false;
+	if (CombatManager::I_Am_Server ()) {
+		if (BaseController != nullptr && BaseController->Is_Base_Destroyed ()) {
+			BaseController->Set_Base_Destroyed (false);
+		}
+		Set_Object_Dirty_Bit (NetworkObjectClass::BIT_RARE, true);
+	}
+
+	const GameObjObserverList &observers = Get_Observers ();
+	for (int index = 0; index < observers.Count (); ++index) {
+		observers[index]->Custom (this, CUSTOM_EVENT_BUILDING_REVIVED, 0, nullptr);
+	}
+	Update_State (true);
+}
+
+void BuildingGameObj::Set_Is_Destroyed (bool onoff)
+{
+	if (onoff != IsDestroyed) {
+		if (onoff) {
+			On_Destroyed ();
+		} else {
+			On_Revived ();
+		}
+	}
+}
+
+void BuildingGameObj::Set_Is_Spy_Disabled (bool onoff)
+{
+	if (onoff != IsSpyDisabled) {
+		IsSpyDisabled = onoff;
+		if (CombatManager::I_Am_Server ()) {
+			Set_Object_Dirty_Bit (NetworkObjectClass::BIT_RARE, true);
+		}
+	}
+}
+
+void BuildingGameObj::Update_Bounding_Box (void)
+{
+	MinMaxAABoxClass bounds;
+	bounds.Init_Empty ();
+	bool found_model = false;
+	auto add_model_bounds = [&](RenderObjClass *model) {
+		if (model != nullptr) {
+			bounds.Add_Box (model->Get_Bounding_Box ());
+			found_model = true;
+		}
+	};
+
+	RefMultiListIterator<BuildingAggregateClass> aggregates (&Aggregates);
+	for (aggregates.First (); !aggregates.Is_Done (); aggregates.Next ()) {
+		add_model_bounds (aggregates.Peek_Obj ()->Peek_Model ());
+	}
+
+	for (auto *meshes : { &InteriorMeshes, &ExteriorMeshes }) {
+		RefMultiListIterator<StaticPhysClass> it (meshes);
+		for (it.First (); !it.Is_Done (); it.Next ()) {
+			add_model_bounds (it.Peek_Obj ()->Peek_Model ());
+		}
+	}
+
+	if (found_model) {
+		BoundingBox.Init (bounds);
+	} else {
+		BoundingBox = AABoxClass (Position, Vector3 (0, 0, 0));
+	}
 }

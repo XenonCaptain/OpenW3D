@@ -42,6 +42,7 @@
 #define	BUILDING_H
 
 #include "always.h"
+#include "aabox.h"
 #include "damageablegameobj.h"
 #include "combatphysobserver.h"
 #include "buildingaggregate.h"
@@ -51,10 +52,14 @@
 /*
 ** Forward declarations
 */
+class AirFactoryGameObj;
 class AudibleSoundClass;
 class BaseControllerClass;
 class BuildingMonitorClass;
+class ConstructionYardGameObj;
+class NavalFactoryGameObj;
 class PowerPlantGameObj;
+class SuperweaponGameObj;
 class SoldierFactoryGameObj;
 class VehicleFactoryGameObj;
 class AirStripGameObj;
@@ -190,6 +195,11 @@ public:
 	virtual	ComCenterGameObj *		As_ComCenterGameObj (void)			{ return nullptr; }
 	virtual	RepairBayGameObj *		As_RepairBayGameObj (void)			{ return nullptr; }
 
+	virtual AirFactoryGameObj *As_AirFactoryGameObj (void) { return nullptr; }
+	virtual ConstructionYardGameObj *As_ConstructionYardGameObj (void) { return nullptr; }
+	virtual NavalFactoryGameObj *As_NavalFactoryGameObj (void) { return nullptr; }
+	virtual SuperweaponGameObj *As_SuperweaponGameObj (void) { return nullptr; }
+
 	/****/
 
 	/*
@@ -198,7 +208,7 @@ public:
 	** BuildingGameObj's that can accept a particular component, the closest one wins.
 	*/
 	void											Get_Position(Vector3 * pos) const override		{ *pos = Position; }
-	void											Set_Position(const Vector3 & pos)		{ Position = pos; CollectionSphere.Center = pos; }
+	void											Set_Position(const Vector3 & pos)		{ Position = pos; CollectionSphere.Center = pos; Update_Bounding_Box (); }
 
 	/*
 	** Damage interface, designed to work similarly to a game object
@@ -250,6 +260,12 @@ public:
 	virtual void								On_Damaged (void);
 	bool											Is_Destroyed (void) const { return IsDestroyed; }
 
+	void Import_Occasional (BitStreamClass &packet) override;
+	bool Is_Spy_Disabled (void) const { return IsSpyDisabled; }
+	virtual void On_Revived (void);
+	void Set_Is_Destroyed (bool onoff);
+	void Set_Is_Spy_Disabled (bool onoff);
+
 	/*
 	** Network support
 	*/
@@ -279,6 +295,15 @@ public:
 	//
 	void											Find_Closest_Poly (const Vector3 &pos, float *distance2);
 
+	// Range results are 0 for out of range, 1 for the building and 2 for its MCT.
+	int Building_In_Range (const Vector3 &point, float range);
+	bool Cast_Ray (RayCollisionTestClass &raytest);
+	float Find_Closest_Poly (const Vector3 &pos);
+	void Find_Closest_Poly (const Vector3 &pos, float *distance2, Vector3 *poly_pos);
+	BuildingAggregateClass *Find_MCT (void);
+	const AABoxClass &Get_Bounds (void) const { return BoundingBox; }
+	bool Is_In_Range_Coarse (const Vector3 &point, float range_sq) const;
+
 protected:
 
 	/*
@@ -306,6 +331,9 @@ protected:
 
 	static bool									CanRepairBuildings;
 
+	AABoxClass BoundingBox;
+	bool IsSpyDisabled = false;
+
 	void											Initialize_Building(void);
 
 	void											Reset_Components(void);
@@ -314,8 +342,9 @@ protected:
 	void											Add_Aggregate(BuildingAggregateClass * aggregate);
 	void											Remove_Aggregate(BuildingAggregateClass * aggregate);
 	void											Add_Light(LightPhysClass * light);
-	void											Find_Closest_Poly_For_Model (RenderObjClass *model, const Vector3 &pos, float *distance2);
+	void											Find_Closest_Poly_For_Model (RenderObjClass *model, const Vector3 &pos, float *distance2, Vector3 *poly_pos = nullptr);
 
+	void Update_Bounding_Box (void);
 	void											Update_State(bool force_update = false);
 	void											Enable_Alternate_Materials(RefMultiListClass<StaticPhysClass> & models, bool onoff);
 	void											Enable_Alternate_Materials(RenderObjClass * model,bool onoff);
