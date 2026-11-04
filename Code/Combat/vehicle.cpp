@@ -172,6 +172,8 @@ VehicleGameObjDef::VehicleGameObjDef( void ) :
 	param->Add_Value ( "Bike", 	VEHICLE_TYPE_BIKE );
 	param->Add_Value ( "Flying", 	VEHICLE_TYPE_FLYING );
 	param->Add_Value ( "Turret", 	VEHICLE_TYPE_TURRET );
+	param->Add_Value ( "Boat", VEHICLE_TYPE_BOAT );
+	param->Add_Value ( "Sub", VEHICLE_TYPE_SUB );
 
 	GENERIC_EDITABLE_PARAM(VehicleGameObjDef,param)
 	}
@@ -550,6 +552,17 @@ enum	{
 	MICROCHUNKID_TRANSITIONS_ENABLED,
 	MICROCHUNKID_OCCUPIED_SEATS,
 	MICROCHUNKID_NUM_SEATS,
+	MICROCHUNKID_SCRIPTS_VISIBLE,
+	MICROCHUNKID_CAN_FIRE,
+	MICROCHUNKID_CAN_DRIVE,
+	MICROCHUNKID_ALLOW_STEALTH_WHILE_EMPTY,
+	MICROCHUNKID_CAN_BE_STOLEN,
+	MICROCHUNKID_LOCK_TEAM,
+	MICROCHUNKID_LAST_TEAM,
+	MICROCHUNKID_DESIRED_BARREL_TILT,
+	MICROCHUNKID_DESIRED_TURRET_TURN,
+	MICROCHUNKID_FIXED_TURRET_FACING,
+	MICROCHUNKID_LOCKED_TURRET_FACING,
 };
 
 bool	VehicleGameObj::Save( ChunkSaveClass & csave )
@@ -570,6 +583,17 @@ bool	VehicleGameObj::Save( ChunkSaveClass & csave )
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_OCCUPIED_SEATS, OccupiedSeats );
 		int num_seats = SeatOccupants.Length();
 		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_NUM_SEATS, num_seats );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_SCRIPTS_VISIBLE, ScriptsVisible );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_CAN_FIRE, CanFire );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_CAN_DRIVE, CanDrive );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_ALLOW_STEALTH_WHILE_EMPTY, AllowStealthWhileEmpty );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_CAN_BE_STOLEN, CanBeStolen );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_LOCK_TEAM, LockTeam );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_LAST_TEAM, LastTeam );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_DESIRED_BARREL_TILT, DesiredBarrelTilt );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_DESIRED_TURRET_TURN, DesiredTurretTurn );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_FIXED_TURRET_FACING, FixedTurretFacing );
+		WRITE_MICRO_CHUNK( csave, MICROCHUNKID_LOCKED_TURRET_FACING, LockedTurretFacing );
 	csave.End_Chunk();
 
 	if ( num_seats != 0 ) {
@@ -606,6 +630,17 @@ bool	VehicleGameObj::Load( ChunkLoadClass &cload )
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_TRANSITIONS_ENABLED, TransitionsEnabled );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_OCCUPIED_SEATS, OccupiedSeats );
 						READ_MICRO_CHUNK( cload, MICROCHUNKID_NUM_SEATS, num_seats );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_SCRIPTS_VISIBLE, ScriptsVisible );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_CAN_FIRE, CanFire );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_CAN_DRIVE, CanDrive );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_ALLOW_STEALTH_WHILE_EMPTY, AllowStealthWhileEmpty );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_CAN_BE_STOLEN, CanBeStolen );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_LOCK_TEAM, LockTeam );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_LAST_TEAM, LastTeam );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_DESIRED_BARREL_TILT, DesiredBarrelTilt );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_DESIRED_TURRET_TURN, DesiredTurretTurn );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_FIXED_TURRET_FACING, FixedTurretFacing );
+						READ_MICRO_CHUNK( cload, MICROCHUNKID_LOCKED_TURRET_FACING, LockedTurretFacing );
 
 						default:
 							Debug_Say(( "Unrecognized Vehicle Variable chunkID\n" ));
@@ -866,6 +901,15 @@ void VehicleGameObj::Export_Rare( BitStreamClass &packet )
 	}
 
 	packet.Add(VehicleDelivered);
+	packet.Add( AllowStealthWhileEmpty );
+	packet.Add( CanBeStolen );
+	packet.Add( CanDrive );
+	packet.Add( LockTeam );
+	packet.Add( ScriptsVisible );
+	packet.Add( DesiredBarrelTilt );
+	packet.Add( DesiredTurretTurn );
+	packet.Add( FixedTurretFacing );
+	packet.Add( LockedTurretFacing );
 }
 
 void VehicleGameObj::Import_Rare( BitStreamClass &packet )
@@ -911,6 +955,15 @@ void VehicleGameObj::Import_Rare( BitStreamClass &packet )
 	bool wasDelivered = VehicleDelivered;
 
 	packet.Get(VehicleDelivered);
+	packet.Get( AllowStealthWhileEmpty );
+	packet.Get( CanBeStolen );
+	packet.Get( CanDrive );
+	packet.Get( LockTeam );
+	packet.Get( ScriptsVisible );
+	packet.Get( DesiredBarrelTilt );
+	packet.Get( DesiredTurretTurn );
+	packet.Get( FixedTurretFacing );
+	packet.Get( LockedTurretFacing );
 
 	if (!wasDelivered && VehicleDelivered) {
 		BaseControllerClass* base = BaseControllerClass::Find_Base(Get_Player_Type());
@@ -949,6 +1002,8 @@ void VehicleGameObj::Import_Frequent(BitStreamClass & packet)
 		case VEHICLE_TYPE_BIKE:
 		case VEHICLE_TYPE_CAR:
 		case VEHICLE_TYPE_TANK:
+		case VEHICLE_TYPE_BOAT:
+		case VEHICLE_TYPE_SUB:
 		case VEHICLE_TYPE_FLYING:
 		{
 			VehiclePhysClass * p_obj = Peek_Vehicle_Phys();
@@ -1018,6 +1073,13 @@ void VehicleGameObj::Import_Frequent(BitStreamClass & packet)
 	}
 
 	packet.Get( DriverIsGunner );
+	packet.Get( CanFire );
+	uint32 revision;
+	packet.Get( revision );
+	if ( revision != DamageMeshesRevision ) {
+		DamageMeshesRevision = revision;
+		DamageMeshesUpdate = true;
+	}
 
    SmartGameObj::Import_Frequent(packet);
 
@@ -1051,6 +1113,8 @@ void VehicleGameObj::Export_Frequent(BitStreamClass & packet)
 		case VEHICLE_TYPE_BIKE:
 		case VEHICLE_TYPE_TANK:
 		case VEHICLE_TYPE_CAR:
+		case VEHICLE_TYPE_BOAT:
+		case VEHICLE_TYPE_SUB:
 		case VEHICLE_TYPE_FLYING:
 		{
 			VehiclePhysClass * p_obj = Peek_Vehicle_Phys();
@@ -1111,6 +1175,8 @@ void VehicleGameObj::Export_Frequent(BitStreamClass & packet)
 	}
 
 	packet.Add( DriverIsGunner );
+	packet.Add( CanFire );
+	packet.Add( DamageMeshesRevision );
 
 	SmartGameObj::Export_Frequent(packet);
 
@@ -1183,6 +1249,14 @@ bool	VehicleGameObj::Set_Targeting( const Vector3 & target_pos, bool do_tilt )
 //Debug_Say(( "Weapon set targeting %f %f %f\n", target_pos.X, target_pos.Y, target_pos.Z ));
 
 	SmartGameObj::Set_Targeting( target_pos );
+
+	if ( FixedTurretFacing ) {
+		Set_Turret_Turn( DesiredTurretTurn );
+		if ( do_tilt ) {
+			Set_Barrel_Tilt( DesiredBarrelTilt );
+		}
+		return true;
+	}
 
 	// Find the desired turret tilt and turn
 	float relative_turn = 0;
@@ -1423,6 +1497,17 @@ void VehicleGameObj::Apply_Control( void )
 	Control.Set_Analog( ControlClass::ANALOG_TURN_LEFT,
 		WWMath::Clamp( Control.Get_Analog( ControlClass::ANALOG_TURN_LEFT ), -1.0F, 1.0F ) );
 
+	if ( !CanDrive ) {
+		Control.Set_Analog( ControlClass::ANALOG_MOVE_FORWARD, 0.0f );
+		Control.Set_Analog( ControlClass::ANALOG_MOVE_LEFT, 0.0f );
+		Control.Set_Analog( ControlClass::ANALOG_MOVE_UP, 0.0f );
+		Control.Set_Analog( ControlClass::ANALOG_TURN_LEFT, 0.0f );
+	}
+	if ( !CanFire ) {
+		Control.Set_Boolean( ControlClass::BOOLEAN_WEAPON_FIRE_PRIMARY, false );
+		Control.Set_Boolean( ControlClass::BOOLEAN_WEAPON_FIRE_SECONDARY, false );
+	}
+
 	SmartGameObj::Apply_Control();
 }
 
@@ -1443,6 +1528,11 @@ void	VehicleGameObj::Think( void )
 
 	Update_Wheel_Effects();
 
+	if ( DamageMeshesUpdate ) {
+		DamageMeshesUpdate = false;
+		Update_Damage_Meshes();
+	}
+
 	// Update the lock status
 	if (LockTimer > 0.0f) {
 		LockTimer -= TimeManager::Get_Frame_Seconds();
@@ -1452,7 +1542,7 @@ void	VehicleGameObj::Think( void )
 
 	// UnStealth if we don't have any occupants, and we aren't in single play
 	if (StealthEffect != nullptr) {
-		if ((Get_Occupant_Count() == 0 ) && ( !IS_MISSION )) {
+		if ((Get_Occupant_Count() == 0 ) && ( !IS_MISSION ) && !AllowStealthWhileEmpty) {
 			StealthEffect->Enable_Stealth(false);
 		}
 	}
@@ -2014,7 +2104,15 @@ bool	VehicleGameObj::Is_Entry_Permitted( SoldierGameObj * p_soldier )
 		is_permitted = false;
 	}
 
-	return is_permitted;
+	int vehicle_team = Get_Player_Type();
+	if ( !CanBeStolen && vehicle_team != player_type &&
+		(vehicle_team == PLAYERTYPE_NOD || vehicle_team == PLAYERTYPE_GDI) ) {
+		return false;
+	}
+
+	SoldierGameObj *owner = Get_Owner();
+	return is_permitted && (LockTeam == LOCK_TEAM_ANY || LockTeam == player_type) &&
+		(owner == nullptr || owner == p_soldier);
 }
 
 void	VehicleGameObj::Remove_Transitions( TransitionDataClass::StyleType transition_type )
@@ -2658,3 +2756,161 @@ void VehicleGameObj::Import_State_Sc(BitStreamClass & packet)
    WWASSERT(packet.Is_Flushed());
 }
 */
+
+int VehicleGameObj::Check_If_On_Surface( int surface_type )
+{
+	PhysClass *physical = Peek_Physical_Object();
+	VehiclePhysClass *physics = physical != nullptr ? physical->As_VehiclePhysClass() : nullptr;
+	if ( physics == nullptr ) {
+		return 0;
+	}
+
+	int count = 0;
+	for ( int i = 0; i < physics->Get_Wheel_Count(); ++i ) {
+		SuspensionElementClass *wheel = physics->Peek_Wheel( i );
+		if ( !wheel->Get_Flag( SuspensionElementClass::FAKE ) &&
+			wheel->Get_Flag( SuspensionElementClass::INCONTACT ) &&
+			wheel->Get_Contact_Surface() == surface_type ) {
+			++count;
+		}
+	}
+	return count;
+}
+
+void VehicleGameObj::Damage_Meshes_Update( void )
+{
+	DamageMeshesUpdate = true;
+	++DamageMeshesRevision;
+	Set_Object_Dirty_Bit( BIT_FREQUENT, true );
+}
+
+SoldierGameObj *VehicleGameObj::Get_Occupant( int seat ) const
+{
+	return seat >= 0 && seat < SeatOccupants.Length() ? SeatOccupants[seat] : nullptr;
+}
+
+SoldierGameObj *VehicleGameObj::Get_Owner( void ) const
+{
+	ScriptableGameObj *owner = Owner.Get_Ptr();
+	return owner != nullptr ? owner->As_SoldierGameObj() : nullptr;
+}
+
+bool VehicleGameObj::Is_Immovable( void ) const
+{
+	PhysClass *physics = Peek_Physical_Object();
+	return physics != nullptr && physics->Is_Immovable();
+}
+
+void VehicleGameObj::Reset_Sound_Effects( void )
+{
+	Change_Engine_Sound_State( ENGINE_SOUND_STATE_OFF );
+	if ( WheelSurfaceSound != nullptr ) {
+		SurfaceEffectsManager::Update_Persistant_Sound( WheelSurfaceSound, SURFACE_TYPE_DEFAULT,
+			SurfaceEffectsManager::HITTER_TYPE_NONE, Get_Transform() );
+	}
+}
+
+int VehicleGameObj::Scripts_Get_Team( void ) const
+{
+	return LastTeam == PLAYERTYPE_NEUTRAL ? Get_Player_Type() : LastTeam;
+}
+
+bool VehicleGameObj::Scripts_Is_Enemy( DamageableGameObj *obj ) const
+{
+	return obj != nullptr && obj != this &&
+		Player_Types_Are_Enemies( Scripts_Get_Team(), obj->Get_Player_Type() );
+}
+
+bool VehicleGameObj::Scripts_Is_Team_Player( void ) const
+{
+	int team = Scripts_Get_Team();
+	return team == PLAYERTYPE_NOD || team == PLAYERTYPE_GDI;
+}
+
+bool VehicleGameObj::Scripts_Is_Teammate( const DamageableGameObj *obj ) const
+{
+	return obj == this || (obj != nullptr && Scripts_Is_Team_Player() &&
+		Scripts_Get_Team() == obj->Get_Player_Type());
+}
+
+void VehicleGameObj::Set_Allow_Stealth_While_Empty( bool onoff )
+{
+	AllowStealthWhileEmpty = onoff;
+	Set_Object_Dirty_Bit( BIT_RARE, true );
+}
+
+void VehicleGameObj::Set_Barrel_Tilt( float tilt )
+{
+	BarrelTilt = WWMath::Clamp( tilt, Get_Definition().WeaponTiltMin, Get_Definition().WeaponTiltMax );
+	Update_Turret( TurretTurn, BarrelTilt );
+}
+
+void VehicleGameObj::Set_Can_Be_Stolen( bool onoff )
+{
+	CanBeStolen = onoff;
+	Set_Object_Dirty_Bit( BIT_RARE, true );
+}
+
+void VehicleGameObj::Set_Can_Drive( bool onoff )
+{
+	CanDrive = onoff;
+	Set_Object_Dirty_Bit( BIT_RARE, true );
+}
+
+void VehicleGameObj::Set_Fixed_Turret_Facing( bool fixed )
+{
+	if ( !LockedTurretFacing && FixedTurretFacing != fixed ) {
+		FixedTurretFacing = fixed;
+		Set_Object_Dirty_Bit( BIT_RARE, true );
+	}
+}
+
+void VehicleGameObj::Set_Immovable( bool onoff )
+{
+	PhysClass *physics = Peek_Physical_Object();
+	if ( physics == nullptr ) {
+		return;
+	}
+
+	physics->Set_Immovable( onoff );
+	if ( MoveablePhysClass *moveable = physics->As_MoveablePhysClass() ) {
+		moveable->Set_Velocity( Vector3( 0, 0, 0 ) );
+	}
+	Set_Object_Dirty_Bit( BIT_FREQUENT, true );
+}
+
+void VehicleGameObj::Set_Is_Scripts_Visible( bool onoff )
+{
+	ScriptsVisible = onoff;
+	Set_Object_Dirty_Bit( BIT_RARE, true );
+}
+
+void VehicleGameObj::Set_Lock_Team( int team )
+{
+	LockTeam = static_cast<char>(team);
+	Set_Object_Dirty_Bit( BIT_RARE, true );
+}
+
+void VehicleGameObj::Set_Occupant( int seat, SoldierGameObj *occupant )
+{
+	if ( seat >= 0 && seat < SeatOccupants.Length() ) {
+		SeatOccupants[seat] = occupant;
+	}
+}
+
+void VehicleGameObj::Set_Owner( SoldierGameObj *owner )
+{
+	Owner = owner;
+}
+
+void VehicleGameObj::Set_Scripts_Can_Fire( bool onoff )
+{
+	CanFire = onoff;
+	Set_Object_Dirty_Bit( BIT_FREQUENT, true );
+}
+
+void VehicleGameObj::Set_Turret_Turn( float turn )
+{
+	TurretTurn = WWMath::Clamp( turn, Get_Definition().WeaponTurnMin, Get_Definition().WeaponTurnMax );
+	Update_Turret( TurretTurn, BarrelTilt );
+}

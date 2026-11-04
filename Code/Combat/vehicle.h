@@ -57,6 +57,8 @@
 	#include "wwstring.h"
 #endif
 
+#include "playertype.h"
+
 class	Sound3DClass;
 class	VehiclePhysClass;
 class	SoldierGameObj;
@@ -73,6 +75,8 @@ typedef enum {
 	VEHICLE_TYPE_BIKE,
 	VEHICLE_TYPE_FLYING,
 	VEHICLE_TYPE_TURRET,
+	VEHICLE_TYPE_BOAT,
+	VEHICLE_TYPE_SUB,
 } VehicleType;
 
 enum
@@ -181,7 +185,7 @@ public:
 
 	// Type ID
 	virtual VehicleGameObj		*As_VehicleGameObj() override		{ return this; }
-	virtual	bool	Is_Aircraft( void )						{ return Get_Definition().Type == VEHICLE_TYPE_FLYING; }
+	virtual	bool	Is_Aircraft( void )						{ return Get_Definition().Type == VEHICLE_TYPE_FLYING || Get_Definition().Type == VEHICLE_TYPE_SUB; }
 	virtual  bool  Is_Turret( void )							{ return Get_Definition().Type == VEHICLE_TYPE_TURRET; }
 
    virtual int Get_Player_Type(void) const override;
@@ -280,7 +284,71 @@ public:
 	void					Unignore_Occupants( void );
 
 
+	enum { LOCK_TEAM_ANY = PLAYERTYPE_GDI + 1 };
+
+	void Aquire_Turret_Bones( void );
+	bool Can_Be_Stolen( void ) const { return CanBeStolen; }
+	bool Can_Drive( void ) const { return CanDrive; }
+	virtual int Check_If_On_Surface( int surface_type );
+	void Damage_Meshes_Update( void );
+	bool Get_Allow_Stealth_While_Empty( void ) const { return AllowStealthWhileEmpty; }
+	float Get_Barrel_Tilt( void ) const { return BarrelTilt; }
+	float Get_Desired_Barrel_Tilt( void ) const { return DesiredBarrelTilt; }
+	float Get_Desired_Turret_Turn( void ) const { return DesiredTurretTurn; }
+	bool Get_Fixed_Turret_Facing( void ) const { return FixedTurretFacing; }
+	bool Get_Is_Scripts_Visible( void ) const { return ScriptsVisible; }
+	int Get_Lock_Team( void ) const { return LockTeam; }
+	bool Get_Locked_Turret_Facing( void ) const { return LockedTurretFacing; }
+	SoldierGameObj *Get_Occupant( int seat ) const;
+	SoldierGameObj *Get_Owner( void ) const;
+	bool Get_Scripts_Can_Fire( void ) const { return CanFire; }
+	bool Get_Transitions_Enabled( void ) const { return TransitionsEnabled; }
+	float Get_Turret_Turn( void ) const { return TurretTurn; }
+	bool Is_Immovable( void ) const;
+	bool Is_Visible( void ) override { return ScriptsVisible; }
+	void Release_Turret_Bones( void );
+	void Reset_Sound_Effects( void );
+	bool Scripts_Is_Enemy( DamageableGameObj *obj ) const;
+	bool Scripts_Is_Team_Player( void ) const;
+	bool Scripts_Is_Teammate( const DamageableGameObj *obj ) const;
+	void Set_Allow_Stealth_While_Empty( bool onoff );
+	void Set_Barrel_Tilt( float tilt );
+	void Set_Can_Be_Stolen( bool onoff );
+	void Set_Can_Drive( bool onoff );
+	void Set_Desired_Barrel_Tilt( float angle ) { DesiredBarrelTilt = angle; Set_Object_Dirty_Bit( BIT_RARE, true ); }
+	void Set_Desired_Turret_Turn( float angle ) { DesiredTurretTurn = angle; Set_Object_Dirty_Bit( BIT_RARE, true ); }
+	void Set_Fixed_Turret_Facing( bool fixed );
+	void Set_Immovable( bool onoff );
+	void Set_Is_Scripts_Visible( bool onoff );
+	void Set_Lock_Team( int team );
+	void Set_Locked_Turret_Facing( bool locked ) { LockedTurretFacing = locked; Set_Object_Dirty_Bit( BIT_RARE, true ); }
+	// Direct seat access leaves occupant bookkeeping to the caller.
+	void Set_Occupant( int seat, SoldierGameObj *occupant );
+	void Set_Owner( SoldierGameObj *owner );
+	void Set_Scripts_Can_Fire( bool onoff );
+	void Set_Scripts_Last_Team( char team ) { LastTeam = static_cast<signed char>(team); }
+	void Set_Turret_Turn( float turn );
+	void Update_Turret( float weapon_turn, float weapon_tilt );
+
+
 protected:
+	int Scripts_Get_Team( void ) const;
+
+	bool AllowStealthWhileEmpty = false;
+	bool CanBeStolen = true;
+	bool CanDrive = true;
+	bool CanFire = true;
+	bool DamageMeshesUpdate = false;
+	uint32 DamageMeshesRevision = 0;
+	float DesiredBarrelTilt = 0.0f;
+	float DesiredTurretTurn = 0.0f;
+	bool FixedTurretFacing = false;
+	signed char LastTeam = PLAYERTYPE_NEUTRAL;
+	char LockTeam = LOCK_TEAM_ANY;
+	bool LockedTurretFacing = false;
+	GameObjReference Owner;
+	bool ScriptsVisible = true;
+
 
 	Sound3DClass			*Sound;
 
@@ -333,9 +401,6 @@ protected:
 
 
 	// Turrets
-	void		Aquire_Turret_Bones( void );
-	void		Release_Turret_Bones( void );
-	void		Update_Turret( float weapon_turn, float weapon_tilt );
 
 
 	// Sound Effects (wheels, engine)
