@@ -2801,6 +2801,12 @@ bool VehicleGameObj::Is_Immovable( void ) const
 	return physics != nullptr && physics->Is_Immovable();
 }
 
+bool VehicleGameObj::Is_Underground( void ) const
+{
+	const PhysClass *physics = Peek_Physical_Object();
+	return physics != nullptr && physics->Get_Collision_Group() == UNDERGROUND_COLLISION_GROUP;
+}
+
 void VehicleGameObj::Reset_Sound_Effects( void )
 {
 	Change_Engine_Sound_State( ENGINE_SOUND_STATE_OFF );

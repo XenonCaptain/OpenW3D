@@ -92,6 +92,7 @@ typedef enum {
 	BULLET_ONLY_COLLISION_GROUP,				// collides only with bullets
 	SOLDIER_COLLISION_GROUP,					// collides with everything (but only soldiers use it)
 	SOLDIER_GHOST_COLLISION_GROUP,			// collides with everything but soldiers
+	UNDERGROUND_COLLISION_GROUP		= 9,		// collides with terrain and itself
 	TERRAIN_COLLISION_GROUP			= 15,		// Terrain must be 15
 } Collision_Group_Type;
 

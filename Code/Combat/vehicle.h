@@ -305,6 +305,7 @@ public:
 	bool Get_Transitions_Enabled( void ) const { return TransitionsEnabled; }
 	float Get_Turret_Turn( void ) const { return TurretTurn; }
 	bool Is_Immovable( void ) const;
+	bool Is_Underground( void ) const;
 	bool Is_Visible( void ) override { return ScriptsVisible; }
 	void Release_Turret_Bones( void );
 	void Reset_Sound_Effects( void );
