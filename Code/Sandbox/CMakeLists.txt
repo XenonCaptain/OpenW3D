@@ -1,3 +1,7 @@
+cmake_minimum_required(VERSION 3.25)
+project(OpenW3DSandboxRules LANGUAGES CXX)
+include(CTest)
+
 # Standalone sandbox rules, suitable for both client and dedicated server.
 add_library(openw3d_sandbox STATIC sandbox.cpp sandbox.h)
 target_compile_features(openw3d_sandbox PUBLIC cxx_std_20)
