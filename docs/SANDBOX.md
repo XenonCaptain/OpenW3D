@@ -62,12 +62,12 @@ not W3D network IDs.
 
 ## Running standalone rules tests
 
-Configure the usual OpenW3D build with testing enabled, then run:
+The Sandbox module is currently intentionally **not registered in the root CMake project**. To configure and test it by itself, run:
 
 ```sh
-cmake -S . -B build -DBUILD_TESTING=ON
-cmake --build build --target openw3d_sandbox_tests
-ctest --test-dir build -R openw3d_sandbox_rules --output-on-failure
+cmake -S Code/Sandbox -B build-sandbox -DBUILD_TESTING=ON
+cmake --build build-sandbox --target openw3d_sandbox_tests
+ctest --test-dir build-sandbox -R openw3d_sandbox_rules --output-on-failure
 ```
 
 Note that full project configuration still requires the engine's platform
